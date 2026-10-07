@@ -134,7 +134,7 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
 
 ## Phase 10 — Observabilité (Sentry)
 - [ ] Lire la doc Expo « Using Sentry ». Installer `@sentry/react-native` avec son plugin, envelopper le layout racine, configurer l'upload des source maps via EAS.
-  - Fait : `@sentry/react-native` ~7.11.0, plugin `@sentry/react-native/expo` (org `mindaios`, projet `tripagent`, région DE), `getSentryExpoConfig` + `withNativeWind` dans `metro.config.js`, `Sentry.init` + `Sentry.wrap` dans `_layout.tsx`. L'app démarre sur l'émulateur. Reste : `SENTRY_AUTH_TOKEN` en variable EAS (visibilité secrète) pour l'upload des source maps au build.
+  - Fait : `@sentry/react-native` ~7.11.0, plugin `@sentry/react-native/expo` (org `mindaios`, projet `tripagent`, région DE), `getSentryExpoConfig` + `withNativeWind` dans `metro.config.js`, `Sentry.init` + `Sentry.wrap` dans `_layout.tsx`. L'app démarre sur l'émulateur. `sendDefaultPii: false`. Erreur de test côté client reçue dans Sentry (TRIPAGENT-1), bouton de test retiré. Reste : `SENTRY_AUTH_TOKEN` en variable EAS (visibilité secrète) pour l'upload des source maps au build.
 - [ ] Côté serveur : vérifier quel SDK Sentry est compatible avec le runtime EAS Hosting (sinon, wrapper minimal). Capture dans les API routes et dans `onFailure` d'Inngest, avec tags `tripId`, `jobId` et `step`.
 - [ ] Vérification : une erreur volontaire côté client et une côté serveur apparaissent dans Sentry, avec la stack symbolisée.
 
