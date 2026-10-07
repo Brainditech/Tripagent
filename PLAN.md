@@ -2,6 +2,7 @@
 
 ## Contexte
 Projet d'apprentissage : refaire l'app d'un tuto, un planificateur de voyages par IA, sur Android uniquement. La spec a été validée à l'issue de l'interview, avec les corrections suivantes :
+- Authentification : Google + code à usage unique envoyé par email (sans mot de passe). Apple viendra avec iOS.
 - Modèle Claude Haiku 4.5 (`claude-haiku-4-5-20251001`), id centralisé dans la config.
 - Quotas lus depuis des variables d'environnement, avec des limites hautes en développement.
 - Couverture : Unsplash affiché en direct, avec crédit au photographe. Leurs conditions interdisent le proxy via ImageKit. La couverture personnalisée téléversée par l'utilisateur passe par ImageKit.
@@ -16,7 +17,7 @@ Point de départ : Expo SDK 57 (expo ~57.0.27), RN 0.86.3, React 19.2.3, expo-ro
 ```
 src/
   app/                 routes Expo Router uniquement
-    (auth)/sign-in.tsx
+    (auth)/sign-in.tsx, verify.tsx
     (app)/_layout.tsx, index.tsx, new-trip.tsx, settings.tsx
     (app)/trips/[id]/index.tsx, progress.tsx, chat.tsx, versions.tsx
     legal/privacy.tsx, legal/terms.tsx            (pages web publiques)
@@ -32,6 +33,7 @@ src/
 - [ ] Créer la structure de dossiers ci-dessus et l'alias `@/` dans tsconfig.
 - [ ] `app.json` : `android.package` = `com.brainditech.tripagent`, `web.output: "server"` (obligatoire pour les API routes), schéma de deep link `tripagent` conservé.
 - [ ] NativeWind **4.2.7** + `tailwindcss@^3.4.17` (doc nativewind.dev) : `babel.config.js` (jsxImportSource), `metro.config.js` (`withNativeWind`), `global.css`, `nativewind-env.d.ts`, tokens clair/sombre dans `tailwind.config.js`.
+  - Installation NativeWind faite et vérifiée sur l'émulateur Android (exemple « Try it out »). Reste : les tokens clair/sombre.
 - [ ] `src/server/config.ts` : `AI_MODEL` (env `ANTHROPIC_MODEL`, défaut `claude-haiku-4-5-20251001`), `QUOTA_TRIPS_PER_MONTH`, `QUOTA_ADJUSTMENTS_PER_TRIP` (lus depuis l'env, validés par Zod, avec des valeurs par défaut prudentes : 3 et 5).
 - [ ] `.env.example` + `.env.local` (non commité). En développement, quotas hauts (par ex. 1000/100). Variables EAS par environnement (`development` / `production`).
 - [ ] `eas.json` : profils `development` (dev client, APK), `preview` (APK interne), `production`.
@@ -55,7 +57,7 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
 ## Phase 2 — Base de données (Neon + Drizzle)
 - [ ] Projet Neon avec deux branches, `main` (prod) et `dev`. Installer `drizzle-orm`, `@neondatabase/serverless` et `drizzle-kit` (dev).
 - [ ] `src/server/db/schema.ts` :
-  - `users` : id = Clerk user id, email, name, locale, created_at.
+  - `users` : id = Clerk user id, email, name (nullable : un compte créé par code email n'a pas forcément de nom), locale, created_at.
   - `trips` : id uuid, user_id FK cascade, destination_name (texte saisi ou Claude), destination_place_id, days, travelers enum, budget enum, locale, status enum (`queued|generating|ready|failed`), current_version_id, adjustments_used, `cover_unsplash` jsonb (id, urls hotlinkées, nom et lien du photographe, html link), `cover_custom` jsonb (ImageKit fileId, filePath), timestamps.
   - `trip_versions` : trip_id FK cascade, version_number, content jsonb, source enum. UNIQUE(trip_id, version_number).
   - `trip_messages` : trip_id FK cascade, role, content, resulting_version_id.
@@ -64,13 +66,16 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
 - [ ] `drizzle.config.ts`, migrations générées et appliquées sur `dev`, client `src/server/db/index.ts` (driver HTTP).
 - [ ] Vérification : un script de seed dev insère puis relit un voyage factice.
 
-## Phase 3 — Authentification (Clerk, Google uniquement)
+## Phase 3 — Authentification (Clerk : Google + code par email)
 - [ ] Lire la doc Expo « Using Clerk ». Installer `@clerk/expo`, `expo-secure-store` et `@clerk/expo-google-signin` (Google natif), puis configurer le plugin et l'app Google dans Clerk avec le SHA-1 Android.
+- [ ] Dashboard Clerk : activer l'identifiant « email address » avec la stratégie **email verification code**, désactiver le mot de passe. Pas de magic link.
 - [ ] `ClerkProvider` + token cache (`@clerk/expo/token-cache`) dans `src/app/_layout.tsx`. Protéger les groupes `(auth)` et `(app)` selon la méthode recommandée par la doc (`<Show>` / redirections).
-- [ ] Écran `sign-in.tsx` : bouton « Continuer avec Google » (`useSignInWithGoogle`), gestion des erreurs et de l'annulation.
+- [ ] Écran `sign-in.tsx` : bouton « Continuer avec Google » (`useSignInWithGoogle`), un séparateur « ou », puis un champ email avec le bouton « Recevoir un code ». Gestion des erreurs et de l'annulation.
+- [ ] Flux email unifié, sans mot de passe, avec les hooks sign-in / sign-up de Clerk (API exacte à vérifier dans la doc) : on tente une connexion par `email_code`. Si le compte n'existe pas, on crée une inscription avec le même email et on envoie le code de vérification.
+- [ ] Écran `verify.tsx` : saisie du code à 6 chiffres (autofill), « Renvoyer le code » avec délai d'attente, « Modifier l'email », erreurs (code invalide, expiré, trop de tentatives).
 - [ ] `src/server/auth.ts` : `requireUser(request)`, qui vérifie le Bearer token via `@clerk/backend` et renvoie `userId`, sinon 401.
 - [ ] `api/webhooks/clerk+api.ts` : vérification de la signature, `user.created` fait un upsert dans `users`, `user.deleted` envoie l'événement Inngest `user/deleted`. Upsert de secours dans `requireUser`.
-- [ ] Vérification : login et logout sur l'appareil, ligne `users` créée, un appel API sans token renvoie 401.
+- [ ] Vérification : login et logout avec Google, puis avec un code email (nouveau compte et compte existant). La ligne `users` est créée dans les deux cas, et un appel API sans token renvoie 401.
 
 ## Phase 4 — API de base
 - [ ] `src/lib/api.ts` (client) : fetch avec token Clerk, erreurs typées. Mettre en place TanStack Query (`QueryClientProvider`).
@@ -159,7 +164,7 @@ Voyageurs en 4 presets · durée de 1 à 10 jours · mois de quota calendaire UT
 
 ## Vérification de bout en bout
 Sur un appareil Android avec un dev build, puis avec un APK `preview` pointant sur la prod EAS Hosting :
-1. Se connecter avec Google.
+1. Se connecter avec Google, puis (avec un autre compte) avec un code reçu par email.
 2. Générer un voyage « Tokyo, Japon », 4 jours, Couple, Modéré : les étapes s'affichent pendant la génération, puis le détail.
 3. Vérifier la couverture Unsplash et son crédit, les adresses et photos Places avec leur crédit, les liens Google Maps, le budget.
 4. Faire 2 ajustements par le chat, puis restaurer la version 1.
