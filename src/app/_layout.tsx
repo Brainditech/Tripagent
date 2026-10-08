@@ -1,5 +1,7 @@
 import "../../global.css";
 import "@/lib/nativewind-interop";
+import { ClerkProvider } from "@clerk/expo";
+import { tokenCache } from "@clerk/expo/token-cache";
 import {
   GoogleSans_400Regular,
   GoogleSans_500Medium,
@@ -21,6 +23,12 @@ Sentry.init({
   integrations: [Sentry.mobileReplayIntegration()],
 });
 
+const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
+
+if (!publishableKey) {
+  throw new Error("Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY to the .env file");
+}
+
 function RootLayout() {
   const [fontsLoaded] = useFonts({
     GoogleSans_400Regular,
@@ -32,9 +40,12 @@ function RootLayout() {
   if (!fontsLoaded) return null;
 
   return (
-    <Stack>
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-    </Stack>
+    <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(app)" />
+        <Stack.Screen name="(auth)" />
+      </Stack>
+    </ClerkProvider>
   );
 }
 

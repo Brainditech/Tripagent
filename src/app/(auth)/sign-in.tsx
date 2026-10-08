@@ -1,5 +1,6 @@
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
+import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { Pressable, Text, View } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
@@ -66,7 +67,11 @@ export default function SignInScreen() {
           {TEXTS.subtitle}
         </Text>
 
-        <Pressable className="mt-[28.7px] h-[41.7px] w-full overflow-hidden rounded-full">
+        <Pressable
+          onPress={() => router.push("/email")}
+          accessibilityRole="button"
+          className="mt-[28.7px] h-[41.7px] w-full overflow-hidden rounded-full"
+        >
           <LinearGradient
             colors={["#0072FE", "#005AF6"]}
             className="flex-1 flex-row items-center justify-center pl-[2.6px]"
@@ -78,7 +83,13 @@ export default function SignInScreen() {
           </LinearGradient>
         </Pressable>
 
-        <Pressable className="mt-[11px] h-[42.8px] w-full flex-row items-center justify-center rounded-full border pl-[2px] border-[#7C8C96] bg-[rgba(14,38,56,0.45)]">
+        {/* Native Google sign-in needs a development build: inactive until then. */}
+        <Pressable
+          disabled
+          accessibilityRole="button"
+          accessibilityState={{ disabled: true }}
+          className="mt-[11px] h-[42.8px] w-full flex-row items-center justify-center rounded-full border pl-[2px] border-[#7C8C96] bg-[rgba(14,38,56,0.45)]"
+        >
           <GoogleIcon size={17.8} />
           <Text className="ml-[13px] font-sans-medium text-[10.4px] leading-[14px] text-white">
             {TEXTS.continueWithGoogle}

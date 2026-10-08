@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@clerk/expo": "^4.10.0",
     "@expo-google-fonts/google-sans": "^0.4.3",
     "@expo/ui": "~57.0.22",
     "@sentry/react-native": "~7.11.0",
@@ -15,6 +16,7 @@
     "expo-linear-gradient": "~57.0.2",
     "expo-linking": "~57.0.12",
     "expo-router": "~57.0.25",
+    "expo-secure-store": "~57.0.4",
     "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
     "expo-symbols": "~57.0.3",

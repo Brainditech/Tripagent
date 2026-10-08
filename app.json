@@ -42,7 +42,9 @@
           "project": "tripagent",
           "organization": "mindaios"
         }
-      ]
+      ],
+      "@clerk/expo",
+      "expo-secure-store"
     ],
     "experiments": {
       "typedRoutes": true,
