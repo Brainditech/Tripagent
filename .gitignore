@@ -11,7 +11,6 @@ expo-env.d.ts
 
 # environnement file
 .env
-.env.example
 
 # Native
 .kotlin/
