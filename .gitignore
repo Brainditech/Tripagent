@@ -47,3 +47,6 @@ example
 
 # IDE (Android Studio)
 .idea/
+
+# emulator screenshots (visual checks)
+screenshots/
