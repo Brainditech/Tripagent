@@ -19,13 +19,8 @@ const TEXTS = {
 } as const;
 
 // No tint over the top half, then a fade to black behind the content (faint foliage stays visible).
-const OVERLAY_COLORS = [
-  "rgba(0, 0, 0, 0)",
-  "rgba(0, 0, 0, 0.7)",
-  "rgba(0, 0, 0, 0.8)",
-  "rgba(0, 0, 0, 0.88)",
-] as const;
-const OVERLAY_LOCATIONS = [0.42, 0.58, 0.7, 1] as const;
+const OVERLAY_COLORS = ["rgba(0, 0, 0, 0)", "rgba(0, 0, 0, 0.85)"] as const;
+const OVERLAY_LOCATIONS = [0.45, 1] as const;
 
 // Footer bottom spacing from the design, kept clear of the system navigation bar.
 const FOOTER_BOTTOM = 35.4;
@@ -47,7 +42,7 @@ export default function SignInScreen() {
         source={require("@/assets/images/auth-bg.jpg")}
         contentFit="cover"
         contentPosition="right"
-        className="absolute inset-x-0 -top-[17.4%] bottom-0"
+        className="absolute inset-0"
       />
       <LinearGradient
         colors={OVERLAY_COLORS}
