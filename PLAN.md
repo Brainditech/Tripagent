@@ -7,6 +7,7 @@ Projet d'apprentissage : refaire l'app d'un tuto, un planificateur de voyages pa
 - Quotas lus depuis des variables d'environnement, avec des limites hautes en développement.
 - Couverture : Unsplash affiché en direct, avec crédit au photographe. Leurs conditions interdisent le proxy via ImageKit. La couverture personnalisée téléversée par l'utilisateur passe par ImageKit.
 - Google Places : seul le `place_id` est stocké, conformément aux Places Policies. L'adresse, les coordonnées, la photo et le lien Maps sont récupérés **à l'affichage** via Place Details et ne sont jamais persistés. Les noms de lieux stockés sont ceux écrits par Claude, pas ceux de Places. L'auteur de chaque photo Places est crédité à l'affichage.
+- Builds : **en local pour l'instant**, sans compte Expo. `npx expo prebuild --platform android` génère `android/` (ignoré par git, jamais modifié à la main), puis `npx expo run:android` compile un development build signé avec le **certificat de debug**. EAS (compte Expo, Build, Hosting, Submit) arrive au déploiement. Chaque certificat de signature (debug maintenant, EAS ou Play Store plus tard) doit avoir son **SHA-1 enregistré chez Google** (client OAuth Android) et son **SHA-256 dans Clerk** (Native applications), sinon la connexion Google native échoue avec ce build.
 - Ordre : le setup, puis une vérification de R2 (durée maximale d'un appel Claude dans Inngest sur EAS Hosting) avant tout le reste. La carte expo-maps, encore en **alpha** dans SDK 57, passe en dernière phase UI.
 
 Point de départ : Expo SDK 57 (expo ~57.0.27), RN 0.86.3, React 19.2.3, expo-router 57, React Compiler et typedRoutes activés, npm. Le repo ne contient que `src/app/_layout.tsx` et `src/app/index.tsx`.
@@ -32,12 +33,14 @@ src/
 ## Phase 0 — Setup et fondations
 - [ ] Créer la structure de dossiers ci-dessus et l'alias `@/` dans tsconfig.
 - [ ] `app.json` : `android.package` = `com.brainditech.tripagent`, `web.output: "server"` (obligatoire pour les API routes), schéma de deep link `tripagent` conservé.
+  - `android.package` fait. Reste : `web.output: "server"`.
 - [ ] NativeWind **4.2.7** + `tailwindcss@^3.4.17` (doc nativewind.dev) : `babel.config.js` (jsxImportSource), `metro.config.js` (`withNativeWind`), `global.css`, `nativewind-env.d.ts`, tokens clair/sombre dans `tailwind.config.js`.
   - Installation NativeWind faite et vérifiée sur l'émulateur Android (exemple « Try it out »). Reste : les tokens clair/sombre.
 - [ ] `src/server/config.ts` : `AI_MODEL` (env `ANTHROPIC_MODEL`, défaut `claude-haiku-4-5-20251001`), `QUOTA_TRIPS_PER_MONTH`, `QUOTA_ADJUSTMENTS_PER_TRIP` (lus depuis l'env, validés par Zod, avec des valeurs par défaut prudentes : 3 et 5).
 - [ ] `.env.example` + `.env.local` (non commité). En développement, quotas hauts (par ex. 1000/100). Variables EAS par environnement (`development` / `production`).
-- [ ] `eas.json` : profils `development` (dev client, APK), `preview` (APK interne), `production`.
-- [ ] Installer `expo-dev-client`, créer le projet EAS (`npx eas-cli@latest init`) et lancer un premier development build Android.
+- [ ] ~~`eas.json`~~ : reporté au déploiement (Phase 12), les builds sont locaux pour l'instant.
+- [ ] Installer `expo-dev-client`, `npx expo prebuild --platform android`, puis premier development build **local** : `npx expo run:android` (certificat de debug, sans compte Expo).
+  - `expo-dev-client` installé, `android/` généré. Certificat de debug (keystore générique du modèle, identique à chaque prebuild) : SHA-1 `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`, SHA-256 `FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C`. Reste : le premier `npx expo run:android`.
 - [ ] Vérification : l'app s'ouvre dans le dev build, un écran stylé avec NativeWind s'affiche, lint et tsc passent.
 
 ## Phase 1 — Vérification de R2 (spike, avant tout le reste)
@@ -147,6 +150,7 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
 ## Phase 12 — Finition et validation finale
 - [ ] `npx expo-doctor`, `npx expo install --fix`, `npx expo lint`, `npx tsc --noEmit`, tous les tests au vert.
 - [ ] Revue des états vides, des erreurs et du réseau lent sur chaque écran. Accessibilité de base (labels, tailles de police).
+- [ ] Créer le compte et le projet EAS (`npx eas-cli@latest init`), `eas.json` (profils `development`, `preview`, `production`). Enregistrer le SHA-1 du certificat EAS (et plus tard celui de la clé de signature Play Store) dans un client OAuth Android chez Google, et le SHA-256 dans Clerk.
 - [ ] Passer `QUOTA_*` aux valeurs de prod dans l'env EAS `production`. Déployer l'API et produire un build `preview` (APK).
 - [ ] Alertes budget sur Google Cloud et sur la console Anthropic.
 
