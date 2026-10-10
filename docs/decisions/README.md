@@ -7,6 +7,7 @@ Chaque décision est écrite et reliée au commit qui la prouve. Les nouvelles d
 |----|----------|--------|
 | [0001](0001-local-development-builds.md) | Development builds locaux (certificat de debug), EAS au déploiement | `a7a43c2` |
 | [0002](0002-google-browser-oauth.md) | Connexion Google par OAuth dans le navigateur (`useSSO`), avec les identifiants partagés de Clerk | `0106091` |
+| [0003](0003-clerk-webhook-event-ordering.md) | Ordre des événements du webhook Clerk : écriture seulement si `updated_at` est plus récent, trace des comptes supprimés | `2ff4e85` |
 
 ## Décisions déjà prises avant les ADR
 Une ligne par décision, avec la raison **telle qu'elle est écrite** dans PLAN.md, AGENTS.md ou un commit. Si rien n'est écrit, elle est marquée « raison non consignée ». « Pas encore implémentée » signifie que la décision figure dans PLAN.md (`e625881`) mais qu'aucun commit ne la réalise encore.
@@ -45,7 +46,7 @@ Une ligne par décision, avec la raison **telle qu'elle est écrite** dans PLAN.
 | Backend en Expo API Routes (`src/app/api/**/+api.ts`) sur EAS Hosting, `web.output: "server"` | `web.output: "server"` est « obligatoire pour les API routes ». Choix des API Routes : raison non consignée | `c6091e2` (en local ; EAS Hosting pas encore) |
 | Neon + Drizzle (driver HTTP) | Driver HTTP : « one fetch per query, nothing to keep alive » (commentaire de `src/server/db/index.ts`). Choix de Neon + Drizzle : raison non consignée | `c6091e2` (table `users`) |
 | Inngest pour la génération en arrière-plan | Raison non consignée | `c6091e2` (fonction `user/deleted`, en local) ; génération pas encore implémentée |
-| Synchro des comptes Clerk : création et mise à jour (`user.created`, `user.updated`) écrites directement par le webhook, Inngest seulement pour la suppression (`user/deleted`) | Clerk (Svix) renvoie lui-même un webhook raté : « A failed write answers 500 so that Clerk (Svix) retries the delivery » (commentaire de `src/app/api/webhooks/clerk+api.ts`) | `c6091e2` |
+| Synchro des comptes Clerk : création et mise à jour (`user.created`, `user.updated`) écrites directement par le webhook, Inngest seulement pour la suppression (`user/deleted`) | Clerk (Svix) renvoie lui-même un webhook raté : « A failed write answers 500 so that Clerk (Svix) retries the delivery » (commentaire de `src/app/api/webhooks/clerk+api.ts`) | `c6091e2` ; ordre des événements : ADR 0003 |
 | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`), id centralisé dans la config serveur | Raison non consignée | Pas encore implémentée |
 | Quotas lus depuis l'environnement, limites hautes en développement | Raison non consignée | Pas encore implémentée |
 | Unsplash affiché en direct (hotlink), photographe crédité | « Leurs conditions interdisent le proxy via ImageKit » | Pas encore implémentée |
