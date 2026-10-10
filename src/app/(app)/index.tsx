@@ -23,7 +23,11 @@ export default function HomeScreen() {
         accessibilityRole="button"
         className="mt-[32px] h-[42.4px] w-full items-center justify-center rounded-full border border-[#7C8C96] bg-[rgba(14,38,56,0.45)]"
       >
-        <Text className="font-sans-medium text-[12px] leading-[15px] text-white">{TEXTS.signOut}</Text>
+        {/* Full width: a shrink-to-fit Text can be measured slightly too narrow on Android with
+            custom fonts, which pushed "déconnecter" onto a hidden second line. */}
+        <Text className="w-full text-center font-sans-medium text-[12px] leading-[15px] text-white">
+          {TEXTS.signOut}
+        </Text>
       </Pressable>
     </View>
   );
