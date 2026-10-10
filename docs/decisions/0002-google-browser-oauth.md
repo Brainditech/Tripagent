@@ -23,5 +23,5 @@ L'écran de connexion propose « Continuer avec Google » (PLAN.md, Phase 3). Le
 - **Pour plus tard seulement** : si l'app est publiée pour d'autres utilisateurs, ajouter notre propre client Google « Web » dans Clerk (identifiants personnalisés), pour que la page Google affiche « Tripagent » au lieu de « Clerk ».
 
 ## Commit
-À compléter.
+`0106091` (`feat(auth): Google sign-in with Clerk browser OAuth`, branche `feat/google-sso`) : `useSSO`, `sso-callback`, `expo-auth-session`, ADR 0002, PLAN.md.
 Validé sur l'émulateur : depuis le dev client, « Continuer avec Google » ouvre la page Google, et après le choix du compte, l'app arrive sur l'accueil connecté (sessions Clerk du 09/10/2026 à 03:26 et du 10/10/2026 à 02:04, heure de Paris). Annulation validée le 10/10/2026 à 02:22 : fermer l'onglet Google (croix ou bouton retour) ramène sur l'écran de connexion sans message, et le bouton est de nouveau actif.

@@ -6,7 +6,7 @@ Chaque décision est écrite et reliée au commit qui la prouve. Les nouvelles d
 | N° | Décision | Commit |
 |----|----------|--------|
 | [0001](0001-local-development-builds.md) | Development builds locaux (certificat de debug), EAS au déploiement | `a7a43c2` |
-| [0002](0002-google-browser-oauth.md) | Connexion Google par OAuth dans le navigateur (`useSSO`), avec les identifiants partagés de Clerk | Non commité (en attente de validation sur l'émulateur) |
+| [0002](0002-google-browser-oauth.md) | Connexion Google par OAuth dans le navigateur (`useSSO`), avec les identifiants partagés de Clerk | `0106091` |
 
 ## Décisions déjà prises avant les ADR
 Une ligne par décision, avec la raison **telle qu'elle est écrite** dans PLAN.md, AGENTS.md ou un commit. Si rien n'est écrit, elle est marquée « raison non consignée ». « Pas encore implémentée » signifie que la décision figure dans PLAN.md (`e625881`) mais qu'aucun commit ne la réalise encore.
