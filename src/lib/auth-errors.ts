@@ -22,13 +22,22 @@ export function clerkErrorCode(error: unknown): string | undefined {
 
 type SsoDiagnosticInput = Pick<StartSSOFlowReturnType, "signIn" | "signUp"> & { url: string };
 
+/** Whether the callback URL carries Clerk's rotating token nonce (a URL that does not parse has none). */
+function hasRotatingTokenNonce(url: string): boolean {
+  try {
+    return new URL(url).searchParams.has("rotating_token_nonce");
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Why an SSO flow came back from the browser without a session, in one line (shown on screen and logged in
  * development builds only). `nonce` tells whether Clerk included the rotating token nonce
  * in the callback URL, which it only does when the URL is allowlisted in the Dashboard.
  */
 export function ssoDiagnostic({ url, signIn, signUp }: SsoDiagnosticInput): string {
-  const hasNonce = new URL(url).searchParams.has("rotating_token_nonce");
+  const hasNonce = hasRotatingTokenNonce(url);
   const verification = signIn?.firstFactorVerification;
   const parts = [
     `nonce : ${hasNonce ? "oui" : "non"}`,
