@@ -1,12 +1,17 @@
+import { useSSO } from "@clerk/expo";
+import * as AuthSession from "expo-auth-session";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, Text, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { useSafeAreaFrame, useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { GoogleIcon, MailIcon } from "@/components/auth-icons";
 import { TripagentLogo } from "@/components/tripagent-logo";
+import { authErrorMessage, ssoDiagnostic } from "@/lib/auth-errors";
+import { navigateAfterAuth } from "@/lib/auth-navigation";
 
 // UI texts, grouped here so they can move to i18n in Phase 6.
 const TEXTS = {
@@ -17,6 +22,8 @@ const TEXTS = {
   continueWithGoogle: "Continuer avec Google",
   privacyPolicy: "Politique de confidentialité",
   termsOfUse: "Conditions d’utilisation",
+  unsupportedStep: "Une étape de vérification supplémentaire est requise. Elle n’est pas encore prise en charge.",
+  ssoIncomplete: "Connexion Google incomplète.",
 } as const;
 
 // No tint over the top half, then a fade to black behind the content (faint foliage stays visible).
@@ -31,10 +38,52 @@ const DESIGN_HEIGHT = 730.6;
 // Taller screens: this share of the extra height goes above the footer, the rest above the logo.
 const EXTRA_HEIGHT_FOOTER_SHARE = 0.4;
 
+// Google sends the browser back to tripagent://sso-callback (allowlisted in Clerk > Native applications).
+const SSO_REDIRECT_URL = AuthSession.makeRedirectUri({ scheme: "tripagent", path: "sso-callback" });
+
 export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const { height } = useSafeAreaFrame();
   const footerGap = FOOTER_GAP + Math.max(0, height - DESIGN_HEIGHT) * EXTRA_HEIGHT_FOOTER_SHARE;
+  const { startSSOFlow } = useSSO();
+  const [googlePending, setGooglePending] = useState(false);
+  const [googleError, setGoogleError] = useState<string | null>(null);
+
+  // Browser OAuth with Clerk's Google connection (see docs/decisions/0002-google-browser-oauth.md).
+  const signInWithGoogle = async () => {
+    if (googlePending) return;
+    setGooglePending(true);
+    setGoogleError(null);
+    try {
+      const { createdSessionId, setActive, signIn, signUp, authSessionResult } = await startSSOFlow({
+        strategy: "oauth_google",
+        redirectUrl: SSO_REDIRECT_URL,
+      });
+      if (createdSessionId && setActive) {
+        await setActive({
+          session: createdSessionId,
+          navigate: navigateAfterAuth(() => setGoogleError(TEXTS.unsupportedStep)),
+        });
+        return;
+      }
+      // The user closed the Google page: nothing to show.
+      if (authSessionResult?.type !== "success") return;
+      // Google did come back, so Android also handed the deep link to the router, which pushed
+      // sso-callback on top of this screen: pop it, then show why no session was created.
+      router.dismissTo("/sign-in");
+      if (signUp?.status === "missing_requirements") {
+        setGoogleError(TEXTS.unsupportedStep);
+        return;
+      }
+      const diagnostic = ssoDiagnostic({ url: authSessionResult.url, signIn, signUp });
+      console.warn("Google SSO ended without a session", diagnostic);
+      setGoogleError(`${TEXTS.ssoIncomplete} ${diagnostic}`);
+    } catch (error) {
+      setGoogleError(authErrorMessage(error));
+    } finally {
+      setGooglePending(false);
+    }
+  };
 
   return (
     <View className="flex-1 bg-[#01090C]">
@@ -69,6 +118,7 @@ export default function SignInScreen() {
 
         <Pressable
           onPress={() => router.push("/email")}
+          disabled={googlePending}
           accessibilityRole="button"
           className="mt-[28.7px] h-[41.7px] w-full overflow-hidden rounded-full"
         >
@@ -83,18 +133,32 @@ export default function SignInScreen() {
           </LinearGradient>
         </Pressable>
 
-        {/* Native Google sign-in needs a development build: inactive until then. */}
-        <Pressable
-          disabled
-          accessibilityRole="button"
-          accessibilityState={{ disabled: true }}
-          className="mt-[11px] h-[42.8px] w-full flex-row items-center justify-center rounded-full border pl-[2px] border-[#7C8C96] bg-[rgba(14,38,56,0.45)]"
-        >
-          <GoogleIcon size={17.8} />
-          <Text className="ml-[13px] font-sans-medium text-[10.4px] leading-[14px] text-white">
-            {TEXTS.continueWithGoogle}
-          </Text>
-        </Pressable>
+        <View className="relative w-full">
+          <Pressable
+            onPress={signInWithGoogle}
+            disabled={googlePending}
+            accessibilityRole="button"
+            accessibilityState={{ disabled: googlePending, busy: googlePending }}
+            className="mt-[11px] h-[42.8px] w-full flex-row items-center justify-center rounded-full border pl-[2px] border-[#7C8C96] bg-[rgba(14,38,56,0.45)]"
+          >
+            {googlePending ? (
+              <ActivityIndicator color="#FFFFFF" />
+            ) : (
+              <>
+                <GoogleIcon size={17.8} />
+                <Text className="ml-[13px] font-sans-medium text-[10.4px] leading-[14px] text-white">
+                  {TEXTS.continueWithGoogle}
+                </Text>
+              </>
+            )}
+          </Pressable>
+          {/* Absolutely positioned so an error does not move the design layout. */}
+          {googleError ? (
+            <Text className="absolute left-0 right-0 top-full mt-[8px] text-center font-sans text-[12px] leading-[16px] text-[#FF8A8A]">
+              {googleError}
+            </Text>
+          ) : null}
+        </View>
 
         <View className="flex-row items-center" style={{ marginTop: footerGap }}>
           <Pressable>

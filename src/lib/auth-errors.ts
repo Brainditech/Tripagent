@@ -1,4 +1,4 @@
-import { isClerkAPIResponseError } from "@clerk/expo";
+import { isClerkAPIResponseError, type StartSSOFlowReturnType } from "@clerk/expo";
 
 // French messages for the Clerk error codes the email-code flow can return (moves to i18n in Phase 6).
 const MESSAGES: Record<string, string> = {
@@ -18,6 +18,27 @@ export function clerkErrorCode(error: unknown): string | undefined {
   if (isClerkAPIResponseError(error)) return error.errors[0]?.code;
   if (error instanceof Error && "code" in error && typeof error.code === "string") return error.code;
   return undefined;
+}
+
+type SsoDiagnosticInput = Pick<StartSSOFlowReturnType, "signIn" | "signUp"> & { url: string };
+
+/**
+ * Why an SSO flow came back from the browser without a session, in one line (shown on screen while
+ * the Google flow is being validated). `nonce` tells whether Clerk included the rotating token nonce
+ * in the callback URL, which it only does when the URL is allowlisted in the Dashboard.
+ */
+export function ssoDiagnostic({ url, signIn, signUp }: SsoDiagnosticInput): string {
+  const hasNonce = new URL(url).searchParams.has("rotating_token_nonce");
+  const verification = signIn?.firstFactorVerification;
+  const parts = [
+    `nonce : ${hasNonce ? "oui" : "non"}`,
+    `signIn : ${signIn?.status ?? "aucun"}`,
+    `vérification : ${verification?.status ?? "aucune"}`,
+  ];
+  const error = verification?.error ?? signUp?.verifications.externalAccount.error;
+  if (error) parts.push(`erreur : ${error.code} (${error.longMessage ?? error.message})`);
+  if (signUp?.status) parts.push(`signUp : ${signUp.status}`);
+  return parts.join(" · ");
 }
 
 /** A user-facing French message for a Clerk error. */

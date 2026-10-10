@@ -6,6 +6,7 @@ Chaque décision est écrite et reliée au commit qui la prouve. Les nouvelles d
 | N° | Décision | Commit |
 |----|----------|--------|
 | [0001](0001-local-development-builds.md) | Development builds locaux (certificat de debug), EAS au déploiement | `a7a43c2` |
+| [0002](0002-google-browser-oauth.md) | Connexion Google par OAuth dans le navigateur (`useSSO`), avec les identifiants partagés de Clerk | Non commité (en attente de validation sur l'émulateur) |
 
 ## Décisions déjà prises avant les ADR
 Une ligne par décision, avec la raison **telle qu'elle est écrite** dans PLAN.md, AGENTS.md ou un commit. Si rien n'est écrit, elle est marquée « raison non consignée ». « Pas encore implémentée » signifie que la décision figure dans PLAN.md (`e625881`) mais qu'aucun commit ne la réalise encore.
@@ -31,11 +32,11 @@ Une ligne par décision, avec la raison **telle qu'elle est écrite** dans PLAN.
 ### Authentification
 | Décision | Raison écrite | Commit |
 |----------|---------------|--------|
-| Google + code à usage unique par e-mail, sans mot de passe | Raison non consignée | PLAN.md (`e625881`) ; e-mail : `2130510` ; Google : pas encore implémentée |
+| Google + code à usage unique par e-mail, sans mot de passe | Raison non consignée | PLAN.md (`e625881`) ; e-mail : `2130510` ; Google : ADR 0002 |
 | Clerk avec flux personnalisés (nos propres écrans) | Raison non consignée | `2130510` |
 | `signUpIfMissing` | « Ne révèle pas si une adresse e-mail a déjà un compte » | `2130510` |
 | Groupes `(auth)` et `(app)` protégés par `useAuth` + `Redirect` | Raison non consignée | `2130510` |
-| Bouton « Continuer avec Google » inactif | Inactif jusqu'au development build | `2130510` |
+| Bouton « Continuer avec Google » inactif | Inactif jusqu'au development build. Remplacé par l'ADR 0002 | `2130510` |
 | Identifiant Android `com.brainditech.tripagent` | Raison non consignée | `a7a43c2` |
 
 ### Données, serveur et services
