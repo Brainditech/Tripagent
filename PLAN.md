@@ -32,15 +32,15 @@ src/
 
 ## Phase 0 — Setup et fondations
 - [ ] Créer la structure de dossiers ci-dessus et l'alias `@/` dans tsconfig.
-  - Alias `@/` présent depuis le modèle Expo (`13ea033`) et utilisé par le code (`10153bd`, `2130510`). Dossiers présents : `app/`, `components/`, `lib/`. Reste : `hooks/`, `server/` et `locales/`.
-- [ ] `app.json` : `android.package` = `com.brainditech.tripagent`, `web.output: "server"` (obligatoire pour les API routes), schéma de deep link `tripagent` conservé.
-  - `android.package` fait (`a7a43c2`), schéma `tripagent` présent depuis le modèle (`13ea033`). Reste : `web.output` vaut `"static"`, à passer à `"server"`.
+  - Alias `@/` présent depuis le modèle Expo (`13ea033`) et utilisé par le code (`10153bd`, `2130510`). Dossiers présents : `app/`, `components/`, `lib/`, et `server/` (avec `db/` et `inngest/`) depuis `c6091e2`. Reste : `hooks/` et `locales/`.
+- [x] `app.json` : `android.package` = `com.brainditech.tripagent`, `web.output: "server"` (obligatoire pour les API routes), schéma de deep link `tripagent` conservé.
+  - `android.package` fait (`a7a43c2`), schéma `tripagent` présent depuis le modèle (`13ea033`). `web.output` est passé à `"server"` (`c6091e2`), ce que prouvent les API routes servies en local le 10/10/2026 (heure de Paris) : webhook Clerk en 200 à 15:01:25, 15:17:12 et 15:17:50, et `/api/inngest` exécuté par le Dev Server Inngest (run `01M4JZCX3PSQDRXDBJFVCHDWAJ` terminé à 15:17:51).
 - [ ] NativeWind **4.2.7** + `tailwindcss@^3.4.17` (doc nativewind.dev) : `babel.config.js` (jsxImportSource), `metro.config.js` (`withNativeWind`), `global.css`, `nativewind-env.d.ts`, tokens clair/sombre dans `tailwind.config.js`.
   - Installation faite (`abfd5be`) : `nativewind@4.2.7`, `tailwindcss@^3.4.17`, `babel.config.js`, `metro.config.js`, `global.css`, `nativewind-env.d.ts`, vérifiée sur l'émulateur Android (exemple « Try it out »). Reste : les tokens clair/sombre, `tailwind.config.js` ne définit que les familles de police.
 - [ ] `src/server/config.ts` : `AI_MODEL` (env `ANTHROPIC_MODEL`, défaut `claude-haiku-4-5-20251001`), `QUOTA_TRIPS_PER_MONTH`, `QUOTA_ADJUSTMENTS_PER_TRIP` (lus depuis l'env, validés par Zod, avec des valeurs par défaut prudentes : 3 et 5).
-  - Pas commencé : `src/server/` n'existe pas.
+  - Pas commencé : `src/server/config.ts` n'existe pas (le dossier `src/server/` existe depuis `c6091e2`).
 - [ ] `.env.example` + `.env.local` (non commité). En développement, quotas hauts (par ex. 1000/100). Variables EAS par environnement (`development` / `production`).
-  - `.env.example` fait (`bc48ee4`), le fichier local est `.env` (ignoré par git). Reste : les quotas (`QUOTA_TRIPS_PER_MONTH`, `QUOTA_ADJUSTMENTS_PER_TRIP`, hauts en développement) et les variables EAS, qui arrivent avec EAS au déploiement (Phase 12).
+  - `.env.example` fait (`bc48ee4`), puis complété dans `c6091e2` (où trouver le secret du webhook Clerk, clés Inngest de production laissées vides). Le fichier local est `.env` (ignoré par git). Reste : les quotas (`QUOTA_TRIPS_PER_MONTH`, `QUOTA_ADJUSTMENTS_PER_TRIP`, hauts en développement) et les variables EAS, qui arrivent avec EAS au déploiement (Phase 12).
 - [ ] ~~`eas.json`~~ : reporté au déploiement (Phase 12), les builds sont locaux pour l'instant.
 - [x] Installer `expo-dev-client`, `npx expo prebuild --platform android`, puis premier development build **local** : `npx expo run:android` (certificat de debug, sans compte Expo).
   - `expo-dev-client` installé (`a7a43c2`), `android/` généré par prebuild (ignoré par git). Premier `npx expo run:android` fait le 09/10/2026 à 03:21 (heure de Paris), APK de debug produit. Certificat de debug (keystore générique du modèle, identique à chaque prebuild) : SHA-1 `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`, SHA-256 `FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C`.
