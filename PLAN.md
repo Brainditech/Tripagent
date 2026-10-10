@@ -32,16 +32,20 @@ src/
 
 ## Phase 0 — Setup et fondations
 - [ ] Créer la structure de dossiers ci-dessus et l'alias `@/` dans tsconfig.
+  - Alias `@/` présent depuis le modèle Expo (`13ea033`) et utilisé par le code (`10153bd`, `2130510`). Dossiers présents : `app/`, `components/`, `lib/`. Reste : `hooks/`, `server/` et `locales/`.
 - [ ] `app.json` : `android.package` = `com.brainditech.tripagent`, `web.output: "server"` (obligatoire pour les API routes), schéma de deep link `tripagent` conservé.
-  - `android.package` fait. Reste : `web.output: "server"`.
+  - `android.package` fait (`a7a43c2`), schéma `tripagent` présent depuis le modèle (`13ea033`). Reste : `web.output` vaut `"static"`, à passer à `"server"`.
 - [ ] NativeWind **4.2.7** + `tailwindcss@^3.4.17` (doc nativewind.dev) : `babel.config.js` (jsxImportSource), `metro.config.js` (`withNativeWind`), `global.css`, `nativewind-env.d.ts`, tokens clair/sombre dans `tailwind.config.js`.
-  - Installation NativeWind faite et vérifiée sur l'émulateur Android (exemple « Try it out »). Reste : les tokens clair/sombre.
+  - Installation faite (`abfd5be`) : `nativewind@4.2.7`, `tailwindcss@^3.4.17`, `babel.config.js`, `metro.config.js`, `global.css`, `nativewind-env.d.ts`, vérifiée sur l'émulateur Android (exemple « Try it out »). Reste : les tokens clair/sombre, `tailwind.config.js` ne définit que les familles de police.
 - [ ] `src/server/config.ts` : `AI_MODEL` (env `ANTHROPIC_MODEL`, défaut `claude-haiku-4-5-20251001`), `QUOTA_TRIPS_PER_MONTH`, `QUOTA_ADJUSTMENTS_PER_TRIP` (lus depuis l'env, validés par Zod, avec des valeurs par défaut prudentes : 3 et 5).
+  - Pas commencé : `src/server/` n'existe pas.
 - [ ] `.env.example` + `.env.local` (non commité). En développement, quotas hauts (par ex. 1000/100). Variables EAS par environnement (`development` / `production`).
+  - `.env.example` fait (`bc48ee4`), le fichier local est `.env` (ignoré par git). Reste : les quotas (`QUOTA_TRIPS_PER_MONTH`, `QUOTA_ADJUSTMENTS_PER_TRIP`, hauts en développement) et les variables EAS, qui arrivent avec EAS au déploiement (Phase 12).
 - [ ] ~~`eas.json`~~ : reporté au déploiement (Phase 12), les builds sont locaux pour l'instant.
-- [ ] Installer `expo-dev-client`, `npx expo prebuild --platform android`, puis premier development build **local** : `npx expo run:android` (certificat de debug, sans compte Expo).
-  - `expo-dev-client` installé, `android/` généré. Certificat de debug (keystore générique du modèle, identique à chaque prebuild) : SHA-1 `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`, SHA-256 `FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C`. Reste : le premier `npx expo run:android`.
-- [ ] Vérification : l'app s'ouvre dans le dev build, un écran stylé avec NativeWind s'affiche, lint et tsc passent.
+- [x] Installer `expo-dev-client`, `npx expo prebuild --platform android`, puis premier development build **local** : `npx expo run:android` (certificat de debug, sans compte Expo).
+  - `expo-dev-client` installé (`a7a43c2`), `android/` généré par prebuild (ignoré par git). Premier `npx expo run:android` fait le 09/10/2026 à 03:21 (heure de Paris), APK de debug produit. Certificat de debug (keystore générique du modèle, identique à chaque prebuild) : SHA-1 `5E:8F:16:06:2E:A3:CD:2C:4A:0D:54:78:76:BA:A6:F3:8C:AB:F6:25`, SHA-256 `FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C`.
+- [x] Vérification : l'app s'ouvre dans le dev build, un écran stylé avec NativeWind s'affiche, lint et tsc passent.
+  - Dev build du 09/10/2026 ouvert sur l'émulateur (connexion Google validée dedans à 03:26, voir Phase 3), écrans de connexion et d'accueil stylés avec NativeWind (`10153bd`, `2130510`). `npx expo lint` et `npx tsc --noEmit` passent sur `2e653bc` le 10/10/2026.
 
 ## Phase 1 — Vérification de R2 (spike, avant tout le reste)
 But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur EAS Hosting.
