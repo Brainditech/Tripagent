@@ -42,9 +42,10 @@ Une ligne par décision, avec la raison **telle qu'elle est écrite** dans PLAN.
 ### Données, serveur et services
 | Décision | Raison écrite | Commit |
 |----------|---------------|--------|
-| Backend en Expo API Routes (`src/app/api/**/+api.ts`) sur EAS Hosting, `web.output: "server"` | `web.output: "server"` est « obligatoire pour les API routes ». Choix des API Routes : raison non consignée | Pas encore implémentée |
-| Neon + Drizzle (driver HTTP) | Raison non consignée | Pas encore implémentée |
-| Inngest pour la génération en arrière-plan | Raison non consignée | Pas encore implémentée |
+| Backend en Expo API Routes (`src/app/api/**/+api.ts`) sur EAS Hosting, `web.output: "server"` | `web.output: "server"` est « obligatoire pour les API routes ». Choix des API Routes : raison non consignée | `c6091e2` (en local ; EAS Hosting pas encore) |
+| Neon + Drizzle (driver HTTP) | Driver HTTP : « one fetch per query, nothing to keep alive » (commentaire de `src/server/db/index.ts`). Choix de Neon + Drizzle : raison non consignée | `c6091e2` (table `users`) |
+| Inngest pour la génération en arrière-plan | Raison non consignée | `c6091e2` (fonction `user/deleted`, en local) ; génération pas encore implémentée |
+| Synchro des comptes Clerk : création et mise à jour (`user.created`, `user.updated`) écrites directement par le webhook, Inngest seulement pour la suppression (`user/deleted`) | Clerk (Svix) renvoie lui-même un webhook raté : « A failed write answers 500 so that Clerk (Svix) retries the delivery » (commentaire de `src/app/api/webhooks/clerk+api.ts`) | `c6091e2` |
 | Claude Haiku 4.5 (`claude-haiku-4-5-20251001`), id centralisé dans la config serveur | Raison non consignée | Pas encore implémentée |
 | Quotas lus depuis l'environnement, limites hautes en développement | Raison non consignée | Pas encore implémentée |
 | Unsplash affiché en direct (hotlink), photographe crédité | « Leurs conditions interdisent le proxy via ImageKit » | Pas encore implémentée |
@@ -57,7 +58,7 @@ Une ligne par décision, avec la raison **telle qu'elle est écrite** dans PLAN.
 | Sentry pour React Native, région DE, plugin Expo + `getSentryExpoConfig` combiné avec NativeWind | Raison non consignée | `f088843` |
 | `sendDefaultPii: false` | Raison non consignée | `47af817` |
 | Jeton Sentry et autres secrets dans `.env` (ignoré par git), jamais avec le préfixe `EXPO_PUBLIC_` | Raison non consignée | `f088843`, `4c5f8e1` (AGENTS.md) |
-| Chaque route API vérifie le JWT Clerk ; les webhooks vérifient la signature svix | Raison non consignée | `4c5f8e1` (AGENTS.md) ; pas encore implémentée |
+| Chaque route API vérifie le JWT Clerk ; les webhooks vérifient la signature svix | Signature svix : « No session protects this route. The Svix signature […] is the only authentication » (commentaire de `src/app/api/webhooks/clerk+api.ts`). JWT : raison non consignée | `4c5f8e1` (AGENTS.md) ; signature svix : `c6091e2` ; JWT : pas encore implémenté |
 | `.env.example` versionné, avec la liste des variables requises | Raison non consignée | `bc48ee4` |
 
 ### Méthode de travail

@@ -50,7 +50,9 @@ src/
 ## Phase 1 — Vérification de R2 (spike, avant tout le reste)
 But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur EAS Hosting.
 - [ ] Installer `inngest` et `@anthropic-ai/sdk`.
+  - `inngest` installé (v4) avec la synchro des utilisateurs (Phase 3), avant le spike. `@anthropic-ai/sdk` pas encore.
 - [ ] `src/server/inngest/client.ts` + `src/app/api/inngest+api.ts` : handler `serve` compatible Request/Response (vérifier dans la doc Inngest l'adaptateur adapté aux Workers / fetch standard), avec `streaming` activé si c'est supporté.
+  - Les deux fichiers sont faits avec l'adaptateur `inngest/edge` (Request/Response standard). En local, le Dev Server Inngest a exécuté la fonction `user-deleted` : deux runs « Delete a user's data » terminés le 10/10/2026 à 14:59:44 et 14:59:49 (heure de Paris), puis le run `01M4JZCX3PSQDRXDBJFVCHDWAJ`, terminé à 15:17:51, qui a supprimé une vraie ligne. `streaming` n'est pas encore activé, et rien n'a encore été testé sur EAS Hosting.
 - [ ] Fonction `spike/long-claude` : une step qui demande à Haiku un itinéraire de 10 jours (sortie longue, environ 4–8k tokens), mesure la durée et renvoie le nombre de tokens. Une 2ᵉ variante appelle Claude en mode streaming côté SDK.
 - [ ] Route de déclenchement temporaire `api/spike+api.ts`, protégée par un secret d'env.
 - [ ] Déployer : `npx expo export --platform web` puis `npx eas-cli@latest deploy`. Synchroniser l'app dans Inngest Cloud (URL `/api/inngest`, clés `INNGEST_EVENT_KEY` / `INNGEST_SIGNING_KEY`).
@@ -63,7 +65,9 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
 
 ## Phase 2 — Base de données (Neon + Drizzle)
 - [ ] Projet Neon avec deux branches, `main` (prod) et `dev`. Installer `drizzle-orm`, `@neondatabase/serverless` et `drizzle-kit` (dev).
+  - Les trois paquets sont installés (`drizzle-kit` en dépendance de dev). La branche `dev` est `ep-spring-resonance-bagn5jhd` (confirmé le 10/10/2026). La branche `main` n'a pas encore été vérifiée.
 - [ ] `src/server/db/schema.ts` :
+  - `users` est fait. `trips`, `trip_versions`, `trip_messages` et `jobs` restent à faire.
   - `users` : id = Clerk user id, email, name (nullable : un compte créé par code email n'a pas forcément de nom), locale, created_at.
   - `trips` : id uuid, user_id FK cascade, destination_name (texte saisi ou Claude), destination_place_id, days, travelers enum, budget enum, locale, status enum (`queued|generating|ready|failed`), current_version_id, adjustments_used, `cover_unsplash` jsonb (id, urls hotlinkées, nom et lien du photographe, html link), `cover_custom` jsonb (ImageKit fileId, filePath), timestamps.
   - `trip_versions` : trip_id FK cascade, version_number, content jsonb, source enum. UNIQUE(trip_id, version_number).
@@ -71,6 +75,7 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
   - `jobs` : trip_id FK cascade, kind, status, current_step, error, inngest_event_id UNIQUE, input_tokens, output_tokens, timestamps.
 - [ ] Aucune colonne d'adresse ou de coordonnées Places, nulle part. Seuls des `placeId` peuvent apparaître dans le JSON du contenu.
 - [ ] `drizzle.config.ts`, migrations générées et appliquées sur `dev`, client `src/server/db/index.ts` (driver HTTP).
+  - Migration `0000_users` (table `users` seule) appliquée sur la branche `dev` (`ep-spring-resonance-bagn5jhd`) le 10/10/2026 à 12:34 (heure de Paris) : 5 colonnes conformes, table vide. Le client `src/server/db/index.ts` (driver HTTP `neon-http`) a écrit sa première ligne par le webhook Clerk le 10/10/2026 à 15:01:25 (heure de Paris). Le même client l'a ensuite mise à jour à 15:17:12 et supprimée à 15:17:51. Les autres tables restent à faire.
 - [ ] Vérification : un script de seed dev insère puis relit un voyage factice.
 
 ## Phase 3 — Authentification (Clerk : Google + code par email)
@@ -90,7 +95,14 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
   - `2130510`. Codes d'erreur `form_code_incorrect` et `sign_up_if_missing_transfer` vérifiés sur l'API Clerk.
 - [ ] `src/server/auth.ts` : `requireUser(request)`, qui vérifie le Bearer token via `@clerk/backend` et renvoie `userId`, sinon 401.
 - [ ] `api/webhooks/clerk+api.ts` : vérification de la signature, `user.created` fait un upsert dans `users`, `user.deleted` envoie l'événement Inngest `user/deleted`. Upsert de secours dans `requireUser`.
+  - Route faite (`c6091e2`) : la signature Svix est vérifiée par `verifyWebhook` (`@clerk/backend`), et l'endpoint Clerk atteint le serveur local par ngrok.
+  - Refus d'une signature invalide validé par ngrok le 10/10/2026 (heure de Paris) : réponse 400 à 13:51:16 pour une requête sans en-têtes `svix-*`, et à 13:51:55 pour une signature forgée.
+  - `user.created` validé le 10/10/2026 à 15:01:25 (heure de Paris) : réponse 200, ligne `user_3KVKRGUHGxS32arFmvOQHKTLRNf` dans `users` avec le nom du compte Google et `locale` à `fr`. Son `created_at` correspond à la création chez Clerk.
+  - `user.deleted` validé le même jour à 14:59:44 et 14:59:49 : la suppression de deux anciens comptes (créés avant la table) a produit deux runs « Delete a user's data » terminés dans le Dev Server Inngest. Suppression d'une ligne existante validée à 15:17:50 : `user.deleted` reçu, réponse 200, run `01M4JZCX3PSQDRXDBJFVCHDWAJ` terminé à 15:17:51, table `users` vide ensuite (relevé par MindOS et dans le journal ngrok, table relue en base).
+  - `user.updated` ajouté avec le même upsert, pour qu'un nom ou un e-mail changé chez Clerk suive dans `users`. Validé le 10/10/2026 à 15:17:12 (heure de Paris) : `user.updated` reçu, réponse 200. La route répond 500 si l'écriture échoue, donc l'upsert a réussi. La ligne n'a pas été relue entre la mise à jour et la suppression.
+  - Reste : l'upsert de secours dans `requireUser`, qui n'existe pas encore.
 - [ ] Vérification : login et logout avec Google, puis avec un code email (nouveau compte et compte existant). La ligne `users` est créée dans les deux cas, et un appel API sans token renvoie 401.
+  - Nouveau compte Google validé le 10/10/2026 à 15:01:25 (heure de Paris) : ligne `users` créée. L'API Backend Clerk confirme un compte `oauth_google` sans mot de passe. Restent : le logout, un compte Google existant, le code e-mail (nouveau compte et compte existant), et le 401 sans token.
 
 ## Phase 4 — API de base
 - [ ] `src/lib/api.ts` (client) : fetch avec token Clerk, erreurs typées. Mettre en place TanStack Query (`QueryClientProvider`).
@@ -144,8 +156,10 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
 ## Phase 9 — Compte et pages légales
 - [ ] Écran Réglages : langue (en lecture seule, celle de l'appareil), liens légaux (`expo-web-browser`), déconnexion, « Supprimer mon compte » avec double confirmation.
 - [ ] `api/account+api.ts` DELETE : supprime l'utilisateur via le Clerk Backend. Le webhook `user.deleted` déclenche la fonction `user/deleted`, qui liste et supprime les fichiers ImageKit de l'utilisateur, puis la ligne `users` (cascade sur trips, versions, messages et jobs). Une ré-exécution ne doit pas poser de problème.
+  - Fait côté webhook (Phase 3) : la chaîne `user.deleted` → `user/deleted` → suppression de la ligne `users` a été validée le 10/10/2026 à 15:17:51 (heure de Paris), run `01M4JZCX3PSQDRXDBJFVCHDWAJ`, compte supprimé depuis le dashboard Clerk. Restent : la route `api/account`, les fichiers ImageKit, les tables en cascade (pas encore créées) et le test d'une ré-exécution.
 - [ ] `src/app/legal/privacy.tsx` et `terms.tsx` : contenu FR/EN (données collectées, sous-traitants Clerk/Neon/Anthropic/Google/Unsplash/ImageKit/Sentry/Inngest, conservation, suppression du compte), rendu web public. Leur URL sert pour la fiche Play Store.
 - [ ] Vérification : suppression d'un compte de test, plus aucune ligne en base ni fichier ImageKit, pages légales accessibles sans connexion.
+  - Compte supprimé depuis le dashboard Clerk le 10/10/2026 à 15:17:50 (heure de Paris) : plus aucune ligne dans `users`. Restent : la suppression depuis l'app, ImageKit et les pages légales.
 
 ## Phase 10 — Observabilité (Sentry)
 - [ ] Lire la doc Expo « Using Sentry ». Installer `@sentry/react-native` avec son plugin, envelopper le layout racine, configurer l'upload des source maps via EAS.
