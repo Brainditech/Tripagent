@@ -23,8 +23,8 @@ export function clerkErrorCode(error: unknown): string | undefined {
 type SsoDiagnosticInput = Pick<StartSSOFlowReturnType, "signIn" | "signUp"> & { url: string };
 
 /**
- * Why an SSO flow came back from the browser without a session, in one line (shown on screen while
- * the Google flow is being validated). `nonce` tells whether Clerk included the rotating token nonce
+ * Why an SSO flow came back from the browser without a session, in one line (shown on screen and logged in
+ * development builds only). `nonce` tells whether Clerk included the rotating token nonce
  * in the callback URL, which it only does when the URL is allowlisted in the Dashboard.
  */
 export function ssoDiagnostic({ url, signIn, signUp }: SsoDiagnosticInput): string {

@@ -75,9 +75,15 @@ export default function SignInScreen() {
         setGoogleError(TEXTS.unsupportedStep);
         return;
       }
-      const diagnostic = ssoDiagnostic({ url: authSessionResult.url, signIn, signUp });
-      console.warn("Google SSO ended without a session", diagnostic);
-      setGoogleError(`${TEXTS.ssoIncomplete} ${diagnostic}`);
+      // The diagnostic names Clerk statuses and the provider error: shown and logged in development only.
+      if (__DEV__) {
+        const diagnostic = ssoDiagnostic({ url: authSessionResult.url, signIn, signUp });
+        console.warn("Google SSO ended without a session", diagnostic);
+        setGoogleError(`${TEXTS.ssoIncomplete} ${diagnostic}`);
+        return;
+      }
+      console.warn("Google SSO ended without a session");
+      setGoogleError(TEXTS.ssoIncomplete);
     } catch (error) {
       setGoogleError(authErrorMessage(error));
     } finally {
