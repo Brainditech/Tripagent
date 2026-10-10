@@ -1,10 +1,11 @@
 import { useSignIn, useSignUp } from "@clerk/expo";
-import { type Href, Redirect, router, useLocalSearchParams } from "expo-router";
+import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 
 import { AuthError, AuthInput, AuthScreen, PrimaryButton, TextLink } from "@/components/auth-ui";
 import { authErrorMessage, clerkErrorCode } from "@/lib/auth-errors";
+import { navigateAfterAuth } from "@/lib/auth-navigation";
 
 // UI texts, grouped here so they can move to i18n in Phase 6.
 const TEXTS = {
@@ -25,6 +26,7 @@ const RESEND_DELAY_SECONDS = 30;
 
 type Params = { email?: string };
 
+/** Code entry screen: checks the 6-digit e-mail code and completes the sign-in or the sign-up. */
 export default function VerifyScreen() {
   const { email } = useLocalSearchParams<Params>();
   const { signIn, fetchStatus: signInStatus } = useSignIn();
@@ -43,15 +45,9 @@ export default function VerifyScreen() {
 
   if (!email) return <Redirect href="/email" />;
 
-  const navigateAfterAuth = ({ session, decorateUrl }: { session: { currentTask?: unknown } | null; decorateUrl: (url: string) => string }) => {
-    // No session tasks (forced MFA, organizations) are enabled for this app yet.
-    if (session?.currentTask) {
-      setError(TEXTS.unsupportedStep);
-      return;
-    }
-    router.replace(decorateUrl("/") as Href);
-  };
+  const navigate = navigateAfterAuth(() => setError(TEXTS.unsupportedStep));
 
+  /** Checks the code, then finishes the sign-in or creates the missing account. */
   const verify = async (value: string) => {
     setError(null);
     setNotice(null);
@@ -63,19 +59,20 @@ export default function VerifyScreen() {
       return setError(authErrorMessage(verifyError));
     }
     if (signIn.status === "complete") {
-      const { error: finalizeError } = await signIn.finalize({ navigate: navigateAfterAuth });
+      const { error: finalizeError } = await signIn.finalize({ navigate });
       if (finalizeError) setError(authErrorMessage(finalizeError));
       return;
     }
     setError(TEXTS.unsupportedStep);
   };
 
+  /** Creates the account from the verified sign-in (signUpIfMissing transfer) and finishes it. */
   const completeSignUp = async () => {
     const { error: transferError } = await signUp.create({ transfer: true });
     if (transferError) return setError(authErrorMessage(transferError));
     // Only the email is required for this app, so the sign-up is complete right after the transfer.
     if (signUp.status === "complete") {
-      const { error: finalizeError } = await signUp.finalize({ navigate: navigateAfterAuth });
+      const { error: finalizeError } = await signUp.finalize({ navigate });
       if (finalizeError) setError(authErrorMessage(finalizeError));
       return;
     }

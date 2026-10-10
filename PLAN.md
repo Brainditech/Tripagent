@@ -70,12 +70,20 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
 - [ ] Vérification : un script de seed dev insère puis relit un voyage factice.
 
 ## Phase 3 — Authentification (Clerk : Google + code par email)
-- [ ] Lire la doc Expo « Using Clerk ». Installer `@clerk/expo`, `expo-secure-store` et `@clerk/expo-google-signin` (Google natif), puis configurer le plugin et l'app Google dans Clerk avec le SHA-1 Android.
-- [ ] Dashboard Clerk : activer l'identifiant « email address » avec la stratégie **email verification code**, désactiver le mot de passe. Pas de magic link.
-- [ ] `ClerkProvider` + token cache (`@clerk/expo/token-cache`) dans `src/app/_layout.tsx`. Protéger les groupes `(auth)` et `(app)` selon la méthode recommandée par la doc (`<Show>` / redirections).
-- [ ] Écran `sign-in.tsx` : bouton « Continuer avec Google » (`useSignInWithGoogle`), un séparateur « ou », puis un champ email avec le bouton « Recevoir un code ». Gestion des erreurs et de l'annulation.
+- [x] Lire la doc Expo « Using Clerk ». Installer `@clerk/expo` et `expo-secure-store` (`2130510`), puis `expo-auth-session` pour Google.
+  - Google par OAuth dans le navigateur (`useSSO`), avec les identifiants partagés de Clerk : pas de `@clerk/expo-google-signin`, pas de Google Cloud Console ni de SHA-1 pour l'instant. Voir [ADR 0002](docs/decisions/0002-google-browser-oauth.md).
+- [x] Dashboard Clerk : ajouter `tripagent://sso-callback` aux redirections mobiles autorisées (Native applications).
+  - Fait le 10/10/2026 par l'API Backend (`POST /v1/redirect_urls`). Google avait déjà fonctionné sans, voir le constat dans l'ADR 0002.
+- [x] Dashboard Clerk : activer l'identifiant « email address » avec la stratégie **email verification code**, désactiver le mot de passe. Pas de magic link.
+  - Vérifié via la configuration de l'instance : e-mail requis, `email_code` seul facteur, pas de mot de passe.
+- [x] `ClerkProvider` + token cache (`@clerk/expo/token-cache`) dans `src/app/_layout.tsx`. Protéger les groupes `(auth)` et `(app)` selon la méthode recommandée par la doc (`<Show>` / redirections).
+  - `useAuth` + `Redirect` dans les layouts de groupe (`2130510`).
+- [x] Écran `sign-in.tsx` : bouton « Continuer avec Google » (`useSSO` + `oauth_google`, ADR 0002) et bouton « Continuer avec mon adresse e-mail » vers l'écran `email.tsx` (maquette `design/auth-ui-design.png`, sans séparateur « ou »). Gestion des erreurs et de l'annulation.
+  - Écran et e-mail faits (`10153bd`, `2130510`). Google validé sur l'émulateur le 09/10/2026 à 03:26 et le 10/10/2026 à 02:04 (heure de Paris). Annulation validée le 10/10/2026 à 02:22 (heure de Paris) : fermeture de l'onglet Google par la croix et par le bouton retour, retour sur l'écran de connexion sans message, bouton de nouveau actif.
 - [ ] Flux email unifié, sans mot de passe, avec les hooks sign-in / sign-up de Clerk (API exacte à vérifier dans la doc) : on tente une connexion par `email_code`. Si le compte n'existe pas, on crée une inscription avec le même email et on envoie le code de vérification.
-- [ ] Écran `verify.tsx` : saisie du code à 6 chiffres (autofill), « Renvoyer le code » avec délai d'attente, « Modifier l'email », erreurs (code invalide, expiré, trop de tentatives).
+  - Remplacé par `signUpIfMissing` (`2130510`) : le code est envoyé dans tous les cas, et le compte est créé après vérification, sans révéler s'il existait. La première version a été testée avec une vraie adresse. Reste à refaire une création de compte avec `signUpIfMissing`.
+- [x] Écran `verify.tsx` : saisie du code à 6 chiffres (autofill), « Renvoyer le code » avec délai d'attente, « Modifier l'email », erreurs (code invalide, expiré, trop de tentatives).
+  - `2130510`. Codes d'erreur `form_code_incorrect` et `sign_up_if_missing_transfer` vérifiés sur l'API Clerk.
 - [ ] `src/server/auth.ts` : `requireUser(request)`, qui vérifie le Bearer token via `@clerk/backend` et renvoie `userId`, sinon 401.
 - [ ] `api/webhooks/clerk+api.ts` : vérification de la signature, `user.created` fait un upsert dans `users`, `user.deleted` envoie l'événement Inngest `user/deleted`. Upsert de secours dans `requireUser`.
 - [ ] Vérification : login et logout avec Google, puis avec un code email (nouveau compte et compte existant). La ligne `users` est créée dans les deux cas, et un appel API sans token renvoie 401.
