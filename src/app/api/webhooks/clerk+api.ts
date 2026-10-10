@@ -1,20 +1,27 @@
 import type { UserJSON } from "@clerk/backend";
 import { verifyWebhook, type WebhookEvent } from "@clerk/backend/webhooks";
+import { sql } from "drizzle-orm";
 
 import { db } from "@/server/db";
-import { users } from "@/server/db/schema";
+import { deletedUsers, users } from "@/server/db/schema";
 import { inngest } from "@/server/inngest/client";
 import { userDeletedEvent } from "@/server/inngest/events";
 
 /**
  * Clerk webhook: keeps the `users` table in step with the Clerk accounts.
  *
- * - `user.created` and `user.updated` upsert the row right here, so a name or
- *   email changed in Clerk follows. A failed write answers 500 so that Clerk
- *   (Svix) retries the delivery.
- * - `user.deleted` hands the clean-up to the Inngest `user/deleted` function,
- *   with the Svix message id as idempotency key: a retried delivery does not
- *   run it twice.
+ * Clerk does not guarantee the order of delivery: a `user.updated` can arrive
+ * before the `user.created` of the same account, two updates can cross, and a
+ * retried event lands after the ones delivered in the meantime (ADR 0003). So:
+ *
+ * - `user.created` and `user.updated` are one and the same upsert, applied only
+ *   when the event's `updated_at` is newer than the stored one and than any
+ *   deletion trace, in a single SQL statement. A stale event answers 200 and
+ *   changes nothing, so that Clerk (Svix) does not retry it.
+ * - `user.deleted` first records the id and the event time in `deleted_users`,
+ *   then hands the clean-up to the Inngest `user/deleted` function, with the
+ *   Svix message id as idempotency key: a retried delivery does not run it twice.
+ * - A failed write answers 500 so that Clerk (Svix) retries the delivery.
  *
  * No session protects this route. The Svix signature, checked against
  * `CLERK_WEBHOOK_SIGNING_SECRET`, is the only authentication: a request
@@ -39,14 +46,20 @@ export async function POST(request: Request) {
     case "user.updated":
       return upsertUser(event.type, event.data);
     case "user.deleted":
-      return queueUserCleanup(event.data.id, request.headers.get("svix-id"));
+      return deleteUser(event.data.id, new Date(event.timestamp), request.headers.get("svix-id"));
     default:
       // Only user.created, user.updated and user.deleted are subscribed in the Clerk Dashboard.
       return Response.json({ received: true, ignored: event.type });
   }
 }
 
-/** Inserts the Clerk account into `users`, or refreshes email and name if the row exists. */
+/**
+ * Inserts the Clerk account into `users`, or refreshes email and name if the row
+ * exists, unless the event is stale. One statement decides both: the
+ * `WHERE NOT EXISTS` skips an account whose deletion trace is as recent as this
+ * `updated_at`, and the `DO UPDATE ... WHERE` skips a row that already holds a
+ * `updated_at` as recent. No row returned means nothing was written.
+ */
 async function upsertUser(type: "user.created" | "user.updated", user: UserJSON): Promise<Response> {
   const email = primaryEmail(user);
   if (!email) {
@@ -55,26 +68,60 @@ async function upsertUser(type: "user.created" | "user.updated", user: UserJSON)
     return new Response("User has no email address", { status: 400 });
   }
   const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || null;
+  const updatedAt = new Date(user.updated_at).toISOString();
 
+  let written: number;
   try {
-    await db
-      .insert(users)
-      .values({ id: user.id, email, name })
-      .onConflictDoUpdate({ target: users.id, set: { email, name } });
+    const result = await db.execute(sql`
+      insert into ${users} (id, email, name, clerk_updated_at)
+      select ${user.id}, ${email}, ${name}, ${updatedAt}::timestamptz
+      where not exists (
+        select 1 from ${deletedUsers}
+        where ${deletedUsers.id} = ${user.id} and ${deletedUsers.deletedAt} >= ${updatedAt}::timestamptz
+      )
+      on conflict (id) do update
+        set email = excluded.email, name = excluded.name, clerk_updated_at = excluded.clerk_updated_at
+        where ${users.clerkUpdatedAt} < excluded.clerk_updated_at
+      returning id
+    `);
+    written = result.rows.length;
   } catch (error) {
     console.error(`[webhooks/clerk] ${type} ${user.id}: database write failed`, error);
     return new Response("Database write failed", { status: 500 });
   }
 
+  if (written === 0) {
+    console.log(`[webhooks/clerk] ${type} ${user.id} ignored: not newer than the stored account or its deletion`);
+    return Response.json({ received: true, userId: user.id, ignored: "stale" });
+  }
   console.log(`[webhooks/clerk] ${type} ${user.id} stored`);
   return Response.json({ received: true, userId: user.id });
 }
 
-/** Sends `user/deleted` to Inngest, which deletes the user's data in the background. */
-async function queueUserCleanup(userId: string | undefined, svixId: string | null): Promise<Response> {
+/**
+ * Records the deletion in `deleted_users` (a retried event keeps the most recent
+ * time), then sends `user/deleted` to Inngest, which deletes the user's data in
+ * the background. The trace comes first: once this route has answered 200, a
+ * late `user.created` or `user.updated` can no longer recreate the account.
+ */
+async function deleteUser(userId: string | undefined, deletedAt: Date, svixId: string | null): Promise<Response> {
   if (!userId) {
     console.error("[webhooks/clerk] user.deleted without user id");
     return new Response("user.deleted without user id", { status: 400 });
+  }
+
+  try {
+    await db
+      .insert(deletedUsers)
+      .values({ id: userId, deletedAt })
+      .onConflictDoUpdate({
+        target: deletedUsers.id,
+        set: { deletedAt },
+        setWhere: sql`${deletedUsers.deletedAt} < excluded.deleted_at`,
+      });
+  } catch (error) {
+    console.error(`[webhooks/clerk] user.deleted ${userId}: database write failed`, error);
+    return new Response("Database write failed", { status: 500 });
   }
 
   try {
