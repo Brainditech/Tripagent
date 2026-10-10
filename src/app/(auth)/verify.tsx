@@ -26,6 +26,7 @@ const RESEND_DELAY_SECONDS = 30;
 
 type Params = { email?: string };
 
+/** Code entry screen: checks the 6-digit e-mail code and completes the sign-in or the sign-up. */
 export default function VerifyScreen() {
   const { email } = useLocalSearchParams<Params>();
   const { signIn, fetchStatus: signInStatus } = useSignIn();
@@ -46,6 +47,7 @@ export default function VerifyScreen() {
 
   const navigate = navigateAfterAuth(() => setError(TEXTS.unsupportedStep));
 
+  /** Checks the code, then finishes the sign-in or creates the missing account. */
   const verify = async (value: string) => {
     setError(null);
     setNotice(null);
@@ -64,6 +66,7 @@ export default function VerifyScreen() {
     setError(TEXTS.unsupportedStep);
   };
 
+  /** Creates the account from the verified sign-in (signUpIfMissing transfer) and finishes it. */
   const completeSignUp = async () => {
     const { error: transferError } = await signUp.create({ transfer: true });
     if (transferError) return setError(authErrorMessage(transferError));

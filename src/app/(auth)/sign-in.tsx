@@ -41,6 +41,7 @@ const EXTRA_HEIGHT_FOOTER_SHARE = 0.4;
 // Google sends the browser back to tripagent://sso-callback (allowlisted in Clerk > Native applications).
 const SSO_REDIRECT_URL = AuthSession.makeRedirectUri({ scheme: "tripagent", path: "sso-callback" });
 
+/** Welcome screen: sign in with Google or with a code sent by e-mail. */
 export default function SignInScreen() {
   const insets = useSafeAreaInsets();
   const { height } = useSafeAreaFrame();
@@ -49,7 +50,10 @@ export default function SignInScreen() {
   const [googlePending, setGooglePending] = useState(false);
   const [googleError, setGoogleError] = useState<string | null>(null);
 
-  // Browser OAuth with Clerk's Google connection (see docs/decisions/0002-google-browser-oauth.md).
+  /**
+   * Signs in with Google through browser OAuth on Clerk's Google connection
+   * (see docs/decisions/0002-google-browser-oauth.md).
+   */
   const signInWithGoogle = async () => {
     if (googlePending) return;
     setGooglePending(true);

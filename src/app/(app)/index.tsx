@@ -7,7 +7,7 @@ const TEXTS = {
   signOut: "Se déconnecter",
 } as const;
 
-// Placeholder home until Phase 6 ("Mes voyages"): shows the session and lets you sign out.
+/** Placeholder home until Phase 6 ("Mes voyages"): shows the session and lets you sign out. */
 export default function HomeScreen() {
   const { signOut } = useAuth();
   const { user } = useUser();
