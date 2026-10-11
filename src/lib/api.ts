@@ -26,11 +26,19 @@ export type Api = {
 type TokenGetter = () => Promise<string | null>;
 
 /**
- * The path as the logs carry it: the trip id, which comes from the route params (so from any
- * deep link), is replaced by `[id]`, as in `/api/trips/[id]/cover`.
+ * The path as the logs carry it, with nothing a request could have put there: the query string
+ * and the fragment are dropped, the trip id (from the route params, so from any deep link) is
+ * replaced by `[id]` whatever it holds, and so is any other segment that is not a plain route
+ * word, for the routes to come: `/api/trips/[id]/cover`, `/api/trips/[id]/versions/[id]`.
  */
 function routeOf(path: string): string {
-  return path.replace(/^\/api\/trips\/[^/?]+/, "/api/trips/[id]");
+  const segments = path.split(/[?#]/, 1)[0].split("/");
+  return segments
+    .map((segment, index) => {
+      const isTripId = index === 3 && segments[2] === "trips";
+      return isTripId || !/^[a-z-]*$/.test(segment) ? "[id]" : segment;
+    })
+    .join("/");
 }
 
 /**

@@ -38,6 +38,18 @@ describe("createApi", () => {
     expect(error).not.toHaveBeenCalled();
   });
 
+  it("keeps neither the query string, the fragment nor any id-like segment in the route", async () => {
+    const api = createApi(async () => "token", answering(404));
+    await expect(api.get("/api/trips/abc/versions/7?token=secret#frag")).rejects.toBeInstanceOf(ApiError);
+    expect(warn).toHaveBeenCalledWith(
+      "API request rejected",
+      expect.objectContaining({ route: "/api/trips/[id]/versions/[id]" }),
+    );
+    const plain = createApi(async () => "token", answering(404));
+    await expect(plain.get("/api/me")).rejects.toBeInstanceOf(ApiError);
+    expect(warn).toHaveBeenLastCalledWith("API request rejected", expect.objectContaining({ route: "/api/me" }));
+  });
+
   it("logs a 5xx as an error and falls back to a generic code", async () => {
     const api = createApi(async () => null, answering(502));
     const failure = await api.post("/api/trips", {}).catch((e: unknown) => e);
