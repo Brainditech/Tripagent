@@ -9,8 +9,11 @@ import {
   GoogleSans_700Bold,
   useFonts,
 } from "@expo-google-fonts/google-sans";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as Sentry from "@sentry/react-native";
+
+import { queryClient } from "@/lib/query";
 
 Sentry.init({
   dsn: "https://caadcf7440c1800b655d9c2626a0f7ab@o4512214175711232.ingest.de.sentry.io/4512215891837008",
@@ -41,10 +44,12 @@ function RootLayout() {
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="(app)" />
-        <Stack.Screen name="(auth)" />
-      </Stack>
+      <QueryClientProvider client={queryClient}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(app)" />
+          <Stack.Screen name="(auth)" />
+        </Stack>
+      </QueryClientProvider>
     </ClerkProvider>
   );
 }

@@ -1,8 +1,9 @@
+import { useMutation } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import {
@@ -28,16 +29,28 @@ import {
   startOfDay,
   Stepper,
 } from "@/components/new-trip-ui";
+import { ApiError, useApi } from "@/lib/api";
+import {
+  BUDGET_LEVELS,
+  type BudgetLevel,
+  INTERESTS,
+  type Interest,
+  MAX_TRAVELERS,
+  MAX_TRIP_DAYS,
+  type Pace,
+  PACES,
+  toIsoDate,
+} from "@/lib/trip-rules";
 
 // UI texts, grouped here so they can move to i18n in Phase 6.
 const TEXTS = {
   back: "Retour",
   title: "Planifier un voyage",
   assistant:
-    "Bonjour ! Je suis ton assistant de voyage intelligent. Dis-moi tes préférences, et je te concocterai un voyage inoubliable.",
-  where: "Où ?",
-  wherePlaceholder: "ex : Tokyo, Japon",
-  when: "Quand ?",
+    "Bonjour ! Je suis ton assistant de voyage intelligent. Dis-moi tes préférences, et je te concocterai un voyage inoubliable.",
+  where: "Où ?",
+  wherePlaceholder: "ex : Tokyo, Japon",
+  when: "Quand ?",
   openCalendar: "Choisir les dates",
   months: [
     "janvier",
@@ -63,30 +76,47 @@ const TEXTS = {
     `Du ${from} ${fromMonth} au ${to} ${toMonth}`,
   dayCount: (n: number) => `${n} jour${n > 1 ? "s" : ""}`,
   budget: "Budget (par personne)",
-  budgets: ["Budget", "Confort", "Luxe"],
   travelers: "Voyageurs",
   travelersCount: (n: number) => `${n} voyageur${n > 1 ? "s" : ""}`,
   fewerTravelers: "Un voyageur de moins",
   moreTravelers: "Un voyageur de plus",
   interests: "Centres d’intérêt",
-  interestList: [
-    "Aventure",
-    "Plages",
-    "Gastronomie",
-    "Culture",
-    "Nature",
-    "Vie nocturne",
-    "Shopping",
-    "Histoire",
-    "Détente",
-    "Road trips",
-  ],
   pace: "Rythme",
-  paces: ["Tranquille", "Équilibré", "Soutenu"],
   generate: "Générer mon itinéraire",
+  errors: {
+    quota: "Vous avez atteint votre quota de voyages pour ce mois.",
+    invalid: "Vérifiez les informations du voyage.",
+    network: "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
+    generic: "Une erreur est survenue. Réessayez.",
+  },
 } as const;
 
-const BUDGET_ICONS = [WalletIcon, SeatIcon, DiamondIcon] as const;
+const BUDGET_LABELS: Record<BudgetLevel, string> = { budget: "Budget", comfort: "Confort", luxury: "Luxe" };
+const BUDGET_ICONS = { budget: WalletIcon, comfort: SeatIcon, luxury: DiamondIcon } as const;
+const PACE_LABELS: Record<Pace, string> = { relaxed: "Tranquille", balanced: "Équilibré", intense: "Soutenu" };
+const INTEREST_LABELS: Record<Interest, string> = {
+  adventure: "Aventure",
+  beaches: "Plages",
+  food: "Gastronomie",
+  culture: "Culture",
+  nature: "Nature",
+  nightlife: "Vie nocturne",
+  shopping: "Shopping",
+  history: "Histoire",
+  relaxation: "Détente",
+  "road-trips": "Road trips",
+};
+
+/** Body of POST /api/trips (validated server-side by `newTripSchema`). */
+type NewTripBody = {
+  destination: string;
+  startDate: string;
+  endDate: string;
+  budget: BudgetLevel;
+  travelers: number;
+  interests: Interest[];
+  pace: Pace;
+};
 
 // "Le 11 octobre", "Du 23 au 26 juin · 4 jours", "Du 30 octobre au 2 novembre · 4 jours".
 function formatRange({ from, to }: DateRange) {
@@ -100,6 +130,16 @@ function formatRange({ from, to }: DateRange) {
   return `${range} · ${TEXTS.dayCount(rangeDays({ from, to }))}`;
 }
 
+/** The message shown under the button for a failed submission. */
+function submissionError(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 429) return TEXTS.errors.quota;
+    if (error.status === 400) return TEXTS.errors.invalid;
+    return TEXTS.errors.generic;
+  }
+  return TEXTS.errors.network;
+}
+
 const BUTTON_SHADOW = { boxShadow: "0 4px 12px rgba(76, 151, 247, 0.35)" } as const;
 const PRIMARY_ICON = NEW_TRIP_COLORS.icon;
 
@@ -107,23 +147,43 @@ const PRIMARY_ICON = NEW_TRIP_COLORS.icon;
 // budget follow design/new-trip-ui-design-2-scrolled.jpg (1 px = 0.536 dp).
 export default function NewTripScreen() {
   const insets = useSafeAreaInsets();
+  const api = useApi();
   const [destination, setDestination] = useState("");
   // Today is selected on arrival; earlier days cannot be chosen.
   const today = useMemo(() => startOfDay(new Date()), []);
   const [dates, setDates] = useState<DateRange>({ from: today, to: null });
-  const [budget, setBudget] = useState(1);
+  const [budget, setBudget] = useState<BudgetLevel>("comfort");
   const [travelers, setTravelers] = useState(2);
-  const [interests, setInterests] = useState<Set<string>>(new Set(["Plages", "Gastronomie"]));
-  const [pace, setPace] = useState(0);
+  const [interests, setInterests] = useState<Set<Interest>>(new Set<Interest>(["beaches", "food"]));
+  const [pace, setPace] = useState<Pace>("relaxed");
 
-  const toggleInterest = (interest: string) =>
+  const toggleInterest = (interest: Interest) =>
     setInterests((current) => {
       const next = new Set(current);
       if (!next.delete(interest)) next.add(interest);
       return next;
     });
 
-  const bottomBarHeight = 10 + 49 + 12 + insets.bottom;
+  // POST /api/trips answers 202 with the trip id as soon as the job is queued; the progress
+  // screen then follows the generation.
+  const createTrip = useMutation({
+    mutationFn: (body: NewTripBody) => api.post<{ tripId: string }>("/api/trips", body),
+    onSuccess: ({ tripId }) => router.replace({ pathname: "/trips/[id]/progress", params: { id: tripId } }),
+  });
+  const canSubmit = destination.trim().length >= 2 && !createTrip.isPending;
+  const submit = () =>
+    createTrip.mutate({
+      destination: destination.trim(),
+      startDate: toIsoDate(dates.from),
+      endDate: toIsoDate(dates.to ?? dates.from),
+      budget,
+      travelers,
+      interests: INTERESTS.filter((interest) => interests.has(interest)),
+      pace,
+    });
+  const errorMessage = createTrip.isError ? submissionError(createTrip.error) : null;
+
+  const bottomBarHeight = 10 + 49 + 12 + insets.bottom + (errorMessage ? 26 : 0);
 
   return (
     <View className="flex-1 bg-[#EBEDF2]">
@@ -165,6 +225,7 @@ export default function NewTripScreen() {
             placeholder={TEXTS.wherePlaceholder}
             placeholderTextColor="#8A8F98"
             textAlignVertical="center"
+            returnKeyType="done"
             className="ml-[13px] h-full flex-1 py-0 font-sans text-[16px] text-[#1A1A1A]"
           />
         </Field>
@@ -184,6 +245,7 @@ export default function NewTripScreen() {
             value={dates}
             onChange={setDates}
             minDate={today}
+            maxDays={MAX_TRIP_DAYS}
             months={TEXTS.months}
             weekdays={TEXTS.weekdays}
             rangeLabel={formatRange(dates)}
@@ -193,15 +255,15 @@ export default function NewTripScreen() {
 
         <SectionLabel className="mt-[19px]">{TEXTS.budget}</SectionLabel>
         <View className="mt-[10px] flex-row gap-[12px]">
-          {TEXTS.budgets.map((label, i) => {
-            const Icon = BUDGET_ICONS[i];
-            const selected = budget === i;
+          {BUDGET_LEVELS.map((level) => {
+            const Icon = BUDGET_ICONS[level];
+            const selected = budget === level;
             return (
               <Pill
-                key={label}
-                label={label}
+                key={level}
+                label={BUDGET_LABELS[level]}
                 selected={selected}
-                onPress={() => setBudget(i)}
+                onPress={() => setBudget(level)}
                 icon={<Icon width={19} color={selected ? "#1E3F6E" : "#2A2D33"} />}
               />
             );
@@ -216,22 +278,27 @@ export default function NewTripScreen() {
           </Text>
           <Stepper
             onDecrement={() => setTravelers((n) => Math.max(1, n - 1))}
-            onIncrement={() => setTravelers((n) => Math.min(10, n + 1))}
+            onIncrement={() => setTravelers((n) => Math.min(MAX_TRAVELERS, n + 1))}
             labels={{ decrement: TEXTS.fewerTravelers, increment: TEXTS.moreTravelers }}
           />
         </Field>
 
         <SectionLabel className="mt-[19px]">{TEXTS.interests}</SectionLabel>
         <View className="mt-[10px] flex-row flex-wrap gap-[8px]">
-          {TEXTS.interestList.map((label) => (
-            <Chip key={label} label={label} selected={interests.has(label)} onPress={() => toggleInterest(label)} />
+          {INTERESTS.map((interest) => (
+            <Chip
+              key={interest}
+              label={INTEREST_LABELS[interest]}
+              selected={interests.has(interest)}
+              onPress={() => toggleInterest(interest)}
+            />
           ))}
         </View>
 
         <SectionLabel className="mt-[19px]">{TEXTS.pace}</SectionLabel>
         <View className="mt-[10px] flex-row gap-[12px]">
-          {TEXTS.paces.map((label, i) => (
-            <Pill key={label} label={label} selected={pace === i} onPress={() => setPace(i)} />
+          {PACES.map((level) => (
+            <Pill key={level} label={PACE_LABELS[level]} selected={pace === level} onPress={() => setPace(level)} />
           ))}
         </View>
       </ScrollView>
@@ -243,12 +310,20 @@ export default function NewTripScreen() {
       >
         <Pressable
           accessibilityRole="button"
-          className="h-[49px] flex-row items-center justify-center rounded-full bg-[#4C97F7]"
+          accessibilityState={{ disabled: !canSubmit, busy: createTrip.isPending }}
+          disabled={!canSubmit}
+          onPress={submit}
+          className={`h-[49px] flex-row items-center justify-center rounded-full bg-[#4C97F7] ${canSubmit ? "" : "opacity-60"}`}
           style={BUTTON_SHADOW}
         >
-          <SparkleIcon width={24} />
+          {createTrip.isPending ? <ActivityIndicator color="#FFFFFF" /> : <SparkleIcon width={24} />}
           <Text className="ml-[9px] font-sans-bold text-[17.5px] leading-[22px] text-white">{TEXTS.generate}</Text>
         </Pressable>
+        {errorMessage ? (
+          <Text accessibilityLiveRegion="polite" className="mt-[8px] text-center font-sans text-[13px] leading-[18px] text-[#B3261E]">
+            {errorMessage}
+          </Text>
+        ) : null}
       </View>
     </View>
   );

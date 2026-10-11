@@ -138,6 +138,8 @@ type CalendarProps = {
   weekdays: readonly string[];
   rangeLabel: string;
   labels: { previousMonth: string; nextMonth: string };
+  /** Longest range allowed, in days. A tap further away starts a new range instead of closing this one. */
+  maxDays?: number;
 };
 
 function MonthButton({ label, disabled, onPress, children }: { label: string; disabled: boolean; onPress: () => void; children: ReactNode }) {
@@ -156,10 +158,11 @@ function MonthButton({ label, disabled, onPress, children }: { label: string; di
 }
 
 /**
- * Month grid with a selectable range. The first tap starts a range, a tap on a later day closes it,
- * any other tap starts over. Days before `minDate` cannot be chosen, nor can the months before it.
+ * Month grid with a selectable range. The first tap starts a range, a tap on a later day closes it
+ * (within `maxDays`), any other tap starts over. Days before `minDate` cannot be chosen, nor can
+ * the months before it.
  */
-export function Calendar({ value, onChange, minDate, months, weekdays, rangeLabel, labels }: CalendarProps) {
+export function Calendar({ value, onChange, minDate, months, weekdays, rangeLabel, labels, maxDays }: CalendarProps) {
   const [visible, setVisible] = useState(() => ({ year: value.from.getFullYear(), month: value.from.getMonth() }));
   const min = startOfDay(minDate);
   const from = startOfDay(value.from);
@@ -179,7 +182,9 @@ export function Calendar({ value, onChange, minDate, months, weekdays, rangeLabe
     });
 
   const select = (day: Date) => {
-    if (to === null && day.getTime() > from.getTime()) onChange({ from, to: day });
+    const closesRange =
+      to === null && day.getTime() > from.getTime() && (maxDays === undefined || rangeDays({ from, to: day }) <= maxDays);
+    if (closesRange) onChange({ from, to: day });
     else onChange({ from: day, to: null });
   };
 

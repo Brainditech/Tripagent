@@ -191,3 +191,89 @@ export function PlusIcon({ width = 12, color = INK }: IconProps) {
     </Svg>
   );
 }
+
+// Outlined camera, the "change the cover" button of the trip detail. Aspect ratio 24:20.
+export function CameraIcon({ width = 20, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={(width * 20) / 24} viewBox="0 0 24 20" fill="none">
+      <Path
+        d="M8.5 1.5h7l1.8 3H20a2 2 0 0 1 2 2v9.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6.5a2 2 0 0 1 2-2h2.7z"
+        stroke={color}
+        strokeWidth={1.9}
+        strokeLinejoin="round"
+      />
+      <Circle cx={12} cy={11} r={3.6} stroke={color} strokeWidth={1.9} />
+    </Svg>
+  );
+}
+
+// Robot face in a speech bubble, for the assistant button of the trip detail.
+export function BotIcon({ width = 28, color = "#FFFFFF" }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3.2v2.3" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      <Circle cx={12} cy={2.4} r={1.3} fill={color} />
+      <Path
+        d="M8 5.5h8a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3h-5l-3.5 2.6v-2.7A3 3 0 0 1 5 14.5v-6a3 3 0 0 1 3-3z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <Circle cx={9.6} cy={11.2} r={1.3} fill={color} />
+      <Circle cx={14.4} cy={11.2} r={1.3} fill={color} />
+      <Path d="M9.8 14.6h4.4" stroke={color} strokeWidth={1.6} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// Outlined bin, for the "delete" menu item.
+export function TrashIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path d="M4 7h16M10 11v6M14 11v6" stroke={color} strokeWidth={1.9} strokeLinecap="round" />
+      <Path
+        d="M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"
+        stroke={color}
+        strokeWidth={1.9}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// Outlined magnifier, the "Repérage des lieux" stage.
+export function SearchIcon({ width = 22, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Circle cx={10.5} cy={10.5} r={6.5} stroke={color} strokeWidth={2.2} />
+      <Path d="M15.5 15.5l5 5" stroke={color} strokeWidth={2.6} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// Dotted route between two pins, the "Création de l'itinéraire" stage. `endColor` tints the arrival pin.
+export function RouteIcon({ width = 22, color = INK, endColor = color }: IconProps & { endColor?: string }) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M7 16.5c4.5 0 3-7 7.5-8.5 1.5-.5 2.5-.5 4-.5"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeDasharray="2.6 2.6"
+      />
+      <Circle cx={5} cy={18} r={3} fill={color} />
+      <Circle cx={19.5} cy={6} r={3} fill={endColor} />
+    </Svg>
+  );
+}
+
+// Check mark of a finished stage.
+export function CheckIcon({ width = 20, color = "#FFFFFF" }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path d="M5 12.5l4.5 4.5L19 7.5" stroke={color} strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
