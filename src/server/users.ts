@@ -1,8 +1,10 @@
+import { isClerkAPIResponseError } from "@clerk/backend/errors";
 import { eq, sql } from "drizzle-orm";
 
 import { clerkClient } from "@/server/auth";
 import { db } from "@/server/db";
 import { deletedUsers, users } from "@/server/db/schema";
+import { HttpError } from "@/server/http";
 
 /** What Tripagent keeps of a Clerk account. */
 export type ClerkAccount = {
@@ -39,25 +41,45 @@ export async function upsertClerkAccount(account: ClerkAccount): Promise<boolean
 }
 
 /**
+ * A session token outlives its account for up to a minute (Clerk JWTs expire, they
+ * are not revoked): the deleted account is refused with a clear status, not a 500.
+ */
+function accountDeleted(): HttpError {
+  return new HttpError(403, "account_deleted", "This account was deleted.");
+}
+
+/** The Clerk account, or 403 when Clerk no longer knows it. */
+async function fetchClerkUser(userId: string) {
+  try {
+    return await clerkClient().users.getUser(userId);
+  } catch (error) {
+    if (isClerkAPIResponseError(error) && error.status === 404) throw accountDeleted();
+    throw error;
+  }
+}
+
+/**
  * Fallback for an account whose webhook has not arrived yet (PLAN.md, Phase 3):
  * makes sure the `users` row exists before a trip references it. Clerk is only
- * read when the row is missing, with the same stale-event rule as the webhook.
+ * read when the row is missing, with the same stale-event rule as the webhook:
+ * a deletion trace newer than the account means it was deleted, hence 403.
  */
 export async function ensureUser(userId: string): Promise<void> {
   const existing = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
   if (existing.length > 0) return;
 
-  const user = await clerkClient().users.getUser(userId);
+  const user = await fetchClerkUser(userId);
   const primary =
     user.emailAddresses.find((address) => address.id === user.primaryEmailAddressId) ?? user.emailAddresses[0];
   if (!primary) {
     // Clerk requires an email address on every Tripagent account, so this never happens.
     throw new Error(`Clerk user ${userId} has no email address`);
   }
-  await upsertClerkAccount({
+  const written = await upsertClerkAccount({
     id: user.id,
     email: primary.emailAddress,
     name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null,
     updatedAt: new Date(user.updatedAt),
   });
+  if (!written) throw accountDeleted();
 }
