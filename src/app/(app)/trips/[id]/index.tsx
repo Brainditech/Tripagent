@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -26,6 +27,7 @@ import {
   TipRow,
 } from "@/components/trip-detail-ui";
 import { useApi } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
 import { formatDay, formatMoney } from "@/lib/format";
 import {
   customCoverUrl,
@@ -97,8 +99,9 @@ function activityMeta(activity: Activity, currency: string): string {
 }
 
 function openUrl(url: string) {
-  Linking.openURL(url).catch(() => {
-    // No app handles the link (no browser on the device): nothing else to do.
+  Linking.openURL(url).catch((error: unknown) => {
+    // No app handles the link (no browser on the device): nothing to do but note it.
+    Sentry.logger.warn("Link could not be opened", { url, message: errorMessage(error) });
   });
 }
 
@@ -129,10 +132,12 @@ export default function TripDetailScreen() {
   const deleteTrip = useMutation({
     mutationFn: () => api.delete(`/api/trips/${id}`),
     onSuccess: () => {
+      Sentry.logger.info("Trip deleted", { trip_id: id });
       queryClient.removeQueries({ queryKey: ["trip", id] });
       queryClient.removeQueries({ queryKey: ["trip-status", id] });
       router.replace("/");
     },
+    // The API client has logged the refusal.
     onError: () => Alert.alert(TEXTS.deleteFailedTitle, TEXTS.deleteFailed),
   });
   const confirmDelete = () => {
@@ -153,10 +158,8 @@ export default function TripDetailScreen() {
     onSuccess: (coverCustom) => {
       queryClient.setQueryData<TripResponse>(["trip", id], (current) => (current ? { ...current, coverCustom } : current));
     },
-    onError: (error) => {
-      console.warn(`[cover] upload failed: ${error.message}`);
-      Alert.alert(TEXTS.coverFailedTitle, TEXTS.coverFailed);
-    },
+    // uploadTripCover has logged which step failed and why.
+    onError: () => Alert.alert(TEXTS.coverFailedTitle, TEXTS.coverFailed),
   });
   // The system photo picker, which needs no permission on recent Android versions. Nothing happens on cancel.
   const pickCover = async () => {

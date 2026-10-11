@@ -1,5 +1,8 @@
 import { useAuth } from "@clerk/expo";
+import * as Sentry from "@sentry/react-native";
 import { useMemo } from "react";
+
+import { errorMessage } from "@/lib/errors";
 
 /** An error answered by the API: `{ error: { code, message } }` with its HTTP status. */
 export class ApiError extends Error {
@@ -34,17 +37,46 @@ export function createApi(getToken: TokenGetter, fetchImpl: typeof fetch = fetch
     if (token) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) headers["Content-Type"] = "application/json";
 
-    const response = await fetchImpl(path, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    // Every failed request is logged here, once, with what the screens cannot show: the status,
+    // the API's error code and how long the attempt took.
+    const startedAt = Date.now();
+    let response: Response;
+    try {
+      response = await fetchImpl(path, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch (error) {
+      // No answer at all (offline, DNS, timeout): the screens say "check your connection".
+      Sentry.logger.warn("API request got no answer", {
+        method,
+        path,
+        has_token: Boolean(token),
+        message: errorMessage(error),
+        duration_ms: Date.now() - startedAt,
+      });
+      throw error;
+    }
     if (response.status === 204) return undefined as T;
 
     const data: unknown = await response.json().catch(() => null);
     if (!response.ok) {
       const error = (data as { error?: { code?: string; message?: string } } | null)?.error;
-      throw new ApiError(response.status, error?.code ?? "http_error", error?.message ?? `HTTP ${response.status}`);
+      const code = error?.code ?? "http_error";
+      const message = error?.message ?? `HTTP ${response.status}`;
+      // A server fault is an error; a refusal (401, 404, 429, invalid body) is a warning.
+      const log = response.status >= 500 ? Sentry.logger.error : Sentry.logger.warn;
+      log("API request rejected", {
+        method,
+        path,
+        status: response.status,
+        code,
+        message,
+        has_token: Boolean(token),
+        duration_ms: Date.now() - startedAt,
+      });
+      throw new ApiError(response.status, code, message);
     }
     return data as T;
   }

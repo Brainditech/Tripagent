@@ -1,3 +1,4 @@
+import * as Sentry from "@sentry/react-native";
 import { useMutation } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router } from "expo-router";
@@ -168,7 +169,18 @@ export default function NewTripScreen() {
   // screen then follows the generation.
   const createTrip = useMutation({
     mutationFn: (body: NewTripBody) => api.post<{ tripId: string }>("/api/trips", body),
-    onSuccess: ({ tripId }) => router.replace({ pathname: "/trips/[id]/progress", params: { id: tripId } }),
+    onSuccess: ({ tripId }, body) => {
+      // The inputs of the generation, next to the trip id the progress screen will report on.
+      Sentry.logger.info("Trip generation requested", {
+        trip_id: tripId,
+        days: rangeDays(dates),
+        travelers: body.travelers,
+        budget: body.budget,
+        pace: body.pace,
+        interests: body.interests.join(","),
+      });
+      router.replace({ pathname: "/trips/[id]/progress", params: { id: tripId } });
+    },
   });
   const canSubmit = destination.trim().length >= 2 && !createTrip.isPending;
   const submit = () =>

@@ -1,4 +1,7 @@
 import { isClerkAPIResponseError, type StartSSOFlowReturnType } from "@clerk/expo";
+import * as Sentry from "@sentry/react-native";
+
+import { errorMessage } from "@/lib/errors";
 
 // French messages for the Clerk error codes the email-code flow can return (moves to i18n in Phase 6).
 const MESSAGES: Record<string, string> = {
@@ -32,8 +35,8 @@ function hasRotatingTokenNonce(url: string): boolean {
 }
 
 /**
- * Why an SSO flow came back from the browser without a session, in one line (shown on screen and logged in
- * development builds only). `nonce` tells whether Clerk included the rotating token nonce
+ * Why an SSO flow came back from the browser without a session, in one line (logged to Sentry, and
+ * shown on screen in development builds). `nonce` tells whether Clerk included the rotating token nonce
  * in the callback URL, which it only does when the URL is allowlisted in the Dashboard.
  */
 export function ssoDiagnostic({ url, signIn, signUp }: SsoDiagnosticInput): string {
@@ -50,10 +53,20 @@ export function ssoDiagnostic({ url, signIn, signUp }: SsoDiagnosticInput): stri
   return parts.join(" · ");
 }
 
-/** A user-facing French message for a Clerk error. */
+/**
+ * A user-facing French message for a Clerk error. The error is also logged with its code and
+ * Clerk's own message: a code without a French message (`known: false`) is one to add to `MESSAGES`.
+ */
 export function authErrorMessage(error: unknown): string {
   const code = clerkErrorCode(error);
-  if (code && MESSAGES[code]) return MESSAGES[code];
-  if (isClerkAPIResponseError(error)) return error.errors[0]?.longMessage ?? FALLBACK;
-  return FALLBACK;
+  const known = code ? MESSAGES[code] : undefined;
+  const clerk = isClerkAPIResponseError(error) ? error : null;
+  const log = known ? Sentry.logger.info : Sentry.logger.warn;
+  log("Clerk auth error", {
+    code: code ?? "unknown",
+    known: Boolean(known),
+    message: clerk?.errors[0]?.longMessage ?? errorMessage(error),
+    ...(clerk ? { status: clerk.status, clerk_trace_id: clerk.clerkTraceId ?? "" } : {}),
+  });
+  return known ?? clerk?.errors[0]?.longMessage ?? FALLBACK;
 }
