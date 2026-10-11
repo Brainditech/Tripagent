@@ -27,7 +27,6 @@ import {
   TipRow,
 } from "@/components/trip-detail-ui";
 import { useApi } from "@/lib/api";
-import { errorMessage } from "@/lib/errors";
 import { formatDay, formatMoney } from "@/lib/format";
 import {
   customCoverUrl,
@@ -99,11 +98,12 @@ function activityMeta(activity: Activity, currency: string): string {
 }
 
 function openUrl(url: string) {
-  Linking.openURL(url).catch((error: unknown) => {
+  Linking.openURL(url).catch(() => {
     // No app handles the link (no browser on the device): nothing to do but note it. The host says
-    // which kind of link it was (Google Maps, Unsplash); the full URL stays out of the log.
+    // which kind of link it was (Google Maps, Unsplash); the full URL stays out of the log, and so
+    // does the rejection message, which repeats it ("Could not open URL '…'").
     const host = /^[a-z]+:\/\/([^/?#]+)/i.exec(url)?.[1] ?? "unknown";
-    Sentry.logger.warn("Link could not be opened", { host, message: errorMessage(error) });
+    Sentry.logger.warn("Link could not be opened", { host });
   });
 }
 
