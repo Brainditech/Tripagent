@@ -7,6 +7,7 @@ import {
   jsonb,
   pgEnum,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   unique,
@@ -160,6 +161,26 @@ export const jobs = pgTable(
     finishedAt: timestamp("finished_at", { withTimezone: true }),
   },
   (table) => [index("jobs_trip_id_idx").on(table.tripId)],
+);
+
+/**
+ * Generations a user reserved in a calendar month (UTC), the monthly quota. One
+ * statement reserves a slot only while `used` is under the limit, so concurrent
+ * requests cannot exceed it, and the row outlives the trips and jobs themselves,
+ * so deleting a trip does not give the slot back (a failed generation does).
+ */
+export const monthlyGenerations = pgTable(
+  "monthly_generations",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** First day of the UTC month, as `YYYY-MM-01`. */
+    month: date("month", { mode: "string" }).notNull(),
+    used: integer("used").notNull().default(0),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.month] })],
 );
 
 export type User = typeof users.$inferSelect;

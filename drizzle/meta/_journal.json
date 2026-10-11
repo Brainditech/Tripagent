@@ -22,6 +22,13 @@
       "when": 1791709643650,
       "tag": "0002_trips_versions_messages_jobs",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791750271884,
+      "tag": "0003_monthly_generations",
+      "breakpoints": true
     }
   ]
 }

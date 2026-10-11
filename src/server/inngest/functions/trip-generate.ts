@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 
 import { tripDays } from "@/lib/trip-rules";
 import { generateItinerary } from "@/server/ai/generate";
@@ -8,6 +8,7 @@ import { db } from "@/server/db";
 import { jobs, trips } from "@/server/db/schema";
 import { inngest } from "@/server/inngest/client";
 import { tripGenerateEvent } from "@/server/inngest/events";
+import { quotaMonth, releaseTripQuota } from "@/server/trips/quota";
 import { firstVersionUpsert } from "@/server/trips/versions";
 import { pickCover, type UnsplashCover } from "@/server/unsplash";
 
@@ -25,16 +26,23 @@ async function setCurrentStep(jobId: string, step: string): Promise<void> {
   await db.update(jobs).set({ currentStep: step, updatedAt: new Date() }).where(eq(jobs.id, jobId));
 }
 
-/** Marks the trip and its job as failed: the quota does not count a failed job. */
-export async function markGenerationFailed(tripId: string, jobId: string, error: string): Promise<void> {
+/**
+ * Marks the trip and its job as failed and gives the quota slot back, to the month
+ * the job was created in. Only the transition to `failed` releases the slot, so a
+ * second call for the same job changes nothing.
+ */
+export async function markGenerationFailed(tripId: string, jobId: string, userId: string, error: string): Promise<void> {
   const now = new Date();
-  await db.batch([
+  const [, failedJobs] = await db.batch([
     db.update(trips).set({ status: "failed", updatedAt: now }).where(eq(trips.id, tripId)),
     db
       .update(jobs)
       .set({ status: "failed", currentStep: null, error, updatedAt: now, finishedAt: now })
-      .where(eq(jobs.id, jobId)),
+      .where(and(eq(jobs.id, jobId), ne(jobs.status, "failed")))
+      .returning({ createdAt: jobs.createdAt }),
   ]);
+  const [job] = failedJobs;
+  if (job) await releaseTripQuota(userId, quotaMonth(job.createdAt));
 }
 
 /**
@@ -52,8 +60,8 @@ export const tripGenerate = inngest.createFunction(
     concurrency: [{ key: "event.data.userId", limit: 1 }, { limit: 5 }],
     throttle: { limit: 10, period: "1m" },
     onFailure: async ({ event, error }) => {
-      const { tripId, jobId } = event.data.event.data;
-      await markGenerationFailed(tripId, jobId, error.message);
+      const { tripId, jobId, userId } = event.data.event.data;
+      await markGenerationFailed(tripId, jobId, userId, error.message);
       // Sentry capture comes with Phase 10.
       console.error(`[trip-generate] trip ${tripId} failed: ${error.message}`);
     },
