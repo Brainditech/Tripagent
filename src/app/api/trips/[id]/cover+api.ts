@@ -1,12 +1,11 @@
-import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { authedRoute } from "@/server/auth";
-import { db } from "@/server/db";
-import { type CustomCover, trips } from "@/server/db/schema";
+import { type CustomCover } from "@/server/db/schema";
 import { HttpError } from "@/server/http";
 import { coverUpload, coverWithUrl, customCoverSchema, fileDetails, isCoverPath, tryDeleteFile } from "@/server/imagekit";
 import { loadOwnedTrip } from "@/server/trips/access";
+import { swapCustomCover } from "@/server/trips/cover";
 
 const uploadRequestSchema = z.object({ mimeType: z.string().max(100).optional() });
 
@@ -26,7 +25,9 @@ export const POST = authedRoute(async ({ request, params, userId }) => {
  * Records the uploaded file as the trip's cover, shown instead of the Unsplash
  * photo. The upload signature binds neither the folder nor the name (ADR 0005), so
  * the file is read back from ImageKit by its id and accepted only as an image
- * stored in this trip's folder. The cover it replaces leaves ImageKit afterwards.
+ * stored in this trip's folder. The cover it displaces leaves ImageKit afterwards:
+ * the one the statement returns, not the one read before, so that two PUTs racing
+ * on the same trip never delete the cover the trip ends up with.
  */
 export const PUT = authedRoute(async ({ request, params, userId }) => {
   const trip = await loadOwnedTrip(params.id, userId);
@@ -39,9 +40,10 @@ export const PUT = authedRoute(async ({ request, params, userId }) => {
     throw new HttpError(400, "invalid_cover", "The file is not an image in this trip's cover folder.");
   }
   const cover: CustomCover = { fileId: file.fileId, filePath: file.filePath };
-  await db.update(trips).set({ coverCustom: cover, updatedAt: new Date() }).where(eq(trips.id, trip.id));
+  const swapped = await swapCustomCover(trip.id, cover);
+  if (!swapped) throw new HttpError(404, "not_found", "No such trip.");
 
-  const previous = trip.coverCustom;
+  const previous = swapped.previous;
   if (previous && previous.fileId !== cover.fileId) await tryDeleteFile(previous.fileId);
   return Response.json({ coverCustom: coverWithUrl(cover) });
 });
