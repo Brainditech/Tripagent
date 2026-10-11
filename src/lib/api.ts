@@ -26,6 +26,14 @@ export type Api = {
 type TokenGetter = () => Promise<string | null>;
 
 /**
+ * The path as the logs carry it: the trip id, which comes from the route params (so from any
+ * deep link), is replaced by `[id]`, as in `/api/trips/[id]/cover`.
+ */
+function routeOf(path: string): string {
+  return path.replace(/^\/api\/trips\/[^/?]+/, "/api/trips/[id]");
+}
+
+/**
  * Fetch wrapper for the app's own API routes. Paths are relative (`/api/...`):
  * in development they reach the dev server, in production the `origin` of the
  * expo-router plugin. Every request carries the Clerk session token.
@@ -37,8 +45,9 @@ export function createApi(getToken: TokenGetter, fetchImpl: typeof fetch = fetch
     if (token) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) headers["Content-Type"] = "application/json";
 
-    // Every failed request is logged here, once, with what the screens cannot show: the status,
-    // the API's error code and how long the attempt took.
+    // Every failed request is logged here, once, with what the screens cannot show: the route,
+    // the status, the API's error code and how long the attempt took.
+    const route = routeOf(path);
     const startedAt = Date.now();
     let response: Response;
     try {
@@ -51,7 +60,7 @@ export function createApi(getToken: TokenGetter, fetchImpl: typeof fetch = fetch
       // No answer at all (offline, DNS, timeout): the screens say "check your connection".
       Sentry.logger.warn("API request got no answer", {
         method,
-        path,
+        route,
         has_token: Boolean(token),
         message: errorMessage(error),
         duration_ms: Date.now() - startedAt,
@@ -69,7 +78,7 @@ export function createApi(getToken: TokenGetter, fetchImpl: typeof fetch = fetch
       const log = response.status >= 500 ? Sentry.logger.error : Sentry.logger.warn;
       log("API request rejected", {
         method,
-        path,
+        route,
         status: response.status,
         code,
         message,
