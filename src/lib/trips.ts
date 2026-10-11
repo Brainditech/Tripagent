@@ -1,7 +1,9 @@
+import * as Sentry from "@sentry/react-native";
 import { queryOptions } from "@tanstack/react-query";
 import { File } from "expo-file-system";
 
 import type { Api } from "@/lib/api";
+import { errorMessage } from "@/lib/errors";
 import type { BudgetLevel, Interest, Pace } from "@/lib/trip-rules";
 import type { TripContent } from "@/server/ai/schema";
 import type { CoverUpload, CustomCoverWithUrl } from "@/server/imagekit";
@@ -94,22 +96,44 @@ export async function uploadTripCover(
   image: PickedImage,
   fetchImpl: typeof fetch = fetch,
 ): Promise<CustomCoverWithUrl> {
-  const upload = await api.post<CoverUpload>(`/api/trips/${tripId}/cover`, { mimeType: image.mimeType });
+  const startedAt = Date.now();
+  const mimeType = image.mimeType ?? "unknown";
+  // One log per upload, with the step that failed: ImageKit's answer is otherwise lost in an alert.
+  let step: "sign" | "upload" | "record" = "sign";
+  try {
+    const upload = await api.post<CoverUpload>(`/api/trips/${tripId}/cover`, { mimeType: image.mimeType });
 
-  const form = new FormData();
-  for (const [name, value] of Object.entries(upload.fields)) form.append(name, value);
-  // Expo's fetch sends a `File` as a multipart part (its name, type and bytes); it does not
-  // take React Native's `{ uri, name, type }` part.
-  form.append("file", new File(image.uri));
-  const response = await fetchImpl(upload.url, { method: "POST", headers: { Accept: "application/json" }, body: form });
-  const result = (await response.json().catch(() => null)) as ImageKitUploadResponse | null;
-  if (!response.ok || !result?.fileId || !result.filePath) {
-    throw new Error(result?.message ?? `ImageKit answered ${response.status}`);
+    step = "upload";
+    const form = new FormData();
+    for (const [name, value] of Object.entries(upload.fields)) form.append(name, value);
+    // Expo's fetch sends a `File` as a multipart part (its name, type and bytes); it does not
+    // take React Native's `{ uri, name, type }` part.
+    form.append("file", new File(image.uri));
+    const response = await fetchImpl(upload.url, { method: "POST", headers: { Accept: "application/json" }, body: form });
+    const result = (await response.json().catch(() => null)) as ImageKitUploadResponse | null;
+    if (!response.ok || !result?.fileId || !result.filePath) {
+      throw new Error(result?.message ?? `ImageKit answered ${response.status}`);
+    }
+
+    step = "record";
+    const saved = await api.put<{ coverCustom: CustomCoverWithUrl }>(`/api/trips/${tripId}/cover`, {
+      fileId: result.fileId,
+      filePath: result.filePath,
+    });
+    Sentry.logger.info("Trip cover uploaded", {
+      trip_id: tripId,
+      mime_type: mimeType,
+      duration_ms: Date.now() - startedAt,
+    });
+    return saved.coverCustom;
+  } catch (error) {
+    Sentry.logger.error("Trip cover upload failed", {
+      trip_id: tripId,
+      step,
+      mime_type: mimeType,
+      message: errorMessage(error),
+      duration_ms: Date.now() - startedAt,
+    });
+    throw error;
   }
-
-  const saved = await api.put<{ coverCustom: CustomCoverWithUrl }>(`/api/trips/${tripId}/cover`, {
-    fileId: result.fileId,
-    filePath: result.filePath,
-  });
-  return saved.coverCustom;
 }

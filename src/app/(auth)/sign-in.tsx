@@ -1,4 +1,5 @@
 import { useSSO } from "@clerk/expo";
+import * as Sentry from "@sentry/react-native";
 import * as AuthSession from "expo-auth-session";
 import { Image } from "expo-image";
 import { LinearGradient } from "expo-linear-gradient";
@@ -76,19 +77,20 @@ export default function SignInScreen() {
       // sso-callback on top of this screen: pop it, then show why no session was created.
       router.dismissTo("/sign-in");
       if (signUp?.status === "missing_requirements") {
+        // Clerk asks for fields this app does not collect (a name, a phone…): the user is stuck here.
+        Sentry.logger.warn("Google sign-up needs fields the app does not collect", {
+          missing_fields: signUp.missingFields.join(","),
+        });
         setGoogleError(TEXTS.unsupportedStep);
         return;
       }
-      // The diagnostic names Clerk statuses and the provider error: shown and logged in development only.
-      if (__DEV__) {
-        const diagnostic = ssoDiagnostic({ url: authSessionResult.url, signIn, signUp });
-        console.warn("Google SSO ended without a session", diagnostic);
-        setGoogleError(`${TEXTS.ssoIncomplete} ${diagnostic}`);
-        return;
-      }
-      console.warn("Google SSO ended without a session");
-      setGoogleError(TEXTS.ssoIncomplete);
+      // The diagnostic names Clerk statuses and the provider error: logged, and shown on screen in
+      // development builds only.
+      const diagnostic = ssoDiagnostic({ url: authSessionResult.url, signIn, signUp });
+      Sentry.logger.warn("Google SSO ended without a session", { diagnostic });
+      setGoogleError(__DEV__ ? `${TEXTS.ssoIncomplete} ${diagnostic}` : TEXTS.ssoIncomplete);
     } catch (error) {
+      // authErrorMessage logs the Clerk error.
       setGoogleError(authErrorMessage(error));
     } finally {
       setGooglePending(false);

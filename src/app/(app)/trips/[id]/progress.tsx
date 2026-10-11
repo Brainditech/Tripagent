@@ -1,7 +1,8 @@
+import * as Sentry from "@sentry/react-native";
 import { useQuery } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -90,6 +91,22 @@ export default function ProgressScreen() {
   const failed = tripStatus === "failed";
   const unreachable = status.isError || trip.isError;
   const currentStep = status.data?.job?.currentStep;
+  const jobError = status.data?.job?.error;
+
+  // One log per generation watched to its end; a failure carries the step it died at and the job's
+  // error. The server clears the job's step when it fails, so the screen keeps the last step it saw
+  // while polling; "queued" when it saw none (the job failed before its first step, or the screen
+  // was opened after the failure).
+  const lastStep = useRef<string | null>(null);
+  useEffect(() => {
+    if (currentStep) lastStep.current = currentStep;
+    if (tripStatus === "failed") {
+      Sentry.logger.error("Trip generation failed", { trip_id: id, step: lastStep.current ?? "queued", job_error: jobError ?? "" });
+    } else if (tripStatus === "ready") {
+      Sentry.logger.info("Trip generation finished", { trip_id: id });
+    }
+  }, [tripStatus, currentStep, jobError, id]);
+
   const progress = progressOf(tripStatus, currentStep);
 
   const stepText =
