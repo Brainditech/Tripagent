@@ -58,6 +58,11 @@ async function fetchClerkUser(userId: string) {
   }
 }
 
+async function userExists(userId: string): Promise<boolean> {
+  const rows = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
+  return rows.length > 0;
+}
+
 /**
  * Fallback for an account whose webhook has not arrived yet (PLAN.md, Phase 3):
  * makes sure the `users` row exists before a trip references it. Clerk is only
@@ -65,8 +70,7 @@ async function fetchClerkUser(userId: string) {
  * a deletion trace newer than the account means it was deleted, hence 403.
  */
 export async function ensureUser(userId: string): Promise<void> {
-  const existing = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
-  if (existing.length > 0) return;
+  if (await userExists(userId)) return;
 
   const user = await fetchClerkUser(userId);
   const primary =
@@ -81,5 +85,7 @@ export async function ensureUser(userId: string): Promise<void> {
     name: [user.firstName, user.lastName].filter(Boolean).join(" ") || null,
     updatedAt: new Date(user.updatedAt),
   });
-  if (!written) throw accountDeleted();
+  // Nothing written also happens when the webhook stored the row, as recent as
+  // Clerk's answer, between the read above and the upsert: the row decides.
+  if (!written && !(await userExists(userId))) throw accountDeleted();
 }

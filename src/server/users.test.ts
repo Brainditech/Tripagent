@@ -12,9 +12,15 @@ vi.mock("@/server/db", () => ({
   db: { select: (...args: unknown[]) => select(...args), execute: (...args: unknown[]) => execute(...args) },
 }));
 
-/** `db.select(...).from(...).where(...).limit(1)` resolving to `rows`. */
+/** One `db.select(...).from(...).where(...).limit(1)` chain resolving to `rows`. */
+function selectChain(rows: unknown[]) {
+  return { from: () => ({ where: () => ({ limit: async () => rows }) }) };
+}
+
+/** Every `users` read answers `rows`. */
 function selectAnswering(rows: unknown[]) {
-  select.mockReturnValue({ from: () => ({ where: () => ({ limit: async () => rows }) }) });
+  select.mockReset();
+  select.mockReturnValue(selectChain(rows));
 }
 
 const clerkUser = {
@@ -51,10 +57,22 @@ describe("ensureUser", () => {
     expect(getUser).toHaveBeenCalledWith("user_1");
   });
 
+  it("accepts the row the webhook wrote between the read and the upsert", async () => {
+    // Missing at first, present when read again: the upsert wrote nothing because the
+    // webhook's row is as recent as Clerk's answer, not because the account was deleted.
+    select.mockReset();
+    select.mockReturnValueOnce(selectChain([])).mockReturnValueOnce(selectChain([{ id: "user_1" }]));
+    getUser.mockResolvedValue(clerkUser);
+    execute.mockResolvedValue({ rows: [] });
+    await expect(ensureUser("user_1")).resolves.toBeUndefined();
+    expect(select).toHaveBeenCalledTimes(2);
+  });
+
   it("answers 403 when the account was deleted after the session token was issued", async () => {
+    // The row is missing before and after the upsert, which writes nothing: the
+    // deletion trace is newer than the account.
     selectAnswering([]);
     getUser.mockResolvedValue(clerkUser);
-    // The deletion trace is newer than the account: the stale-proof upsert writes nothing.
     execute.mockResolvedValue({ rows: [] });
     const error = await failure(() => ensureUser("user_1"));
     expect(error).toBeInstanceOf(HttpError);
