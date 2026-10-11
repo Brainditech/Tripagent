@@ -61,3 +61,36 @@ export async function pickCover(query: string, fetchImpl: typeof fetch = fetch):
     return null;
   }
 }
+
+/** Most destination photos remembered; past that, the oldest entry leaves first. */
+const MAX_CACHED_PHOTOS = 200;
+
+const photoCache = new Map<string, Promise<UnsplashCover | null>>();
+
+/**
+ * The photo of a destination card of the assistant, looked up once per process: the same
+ * destination comes back often ("Lisbon, Portugal"), and the demo rate limit (50/h) would not
+ * take four requests per answer for long. A miss or a failure is not kept, so that the next
+ * request may find the photo.
+ */
+export function cachedPhoto(query: string, fetchImpl: typeof fetch = fetch): Promise<UnsplashCover | null> {
+  const key = query.trim().toLowerCase();
+  const cached = photoCache.get(key);
+  if (cached) return cached;
+
+  const lookup = pickCover(query, fetchImpl).then((photo) => {
+    if (!photo) photoCache.delete(key);
+    return photo;
+  });
+  photoCache.set(key, lookup);
+  if (photoCache.size > MAX_CACHED_PHOTOS) {
+    const oldest = photoCache.keys().next().value;
+    if (oldest !== undefined) photoCache.delete(oldest);
+  }
+  return lookup;
+}
+
+/** Forgets every photo; for the tests. */
+export function clearPhotoCache(): void {
+  photoCache.clear();
+}
