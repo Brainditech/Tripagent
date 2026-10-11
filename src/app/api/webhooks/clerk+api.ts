@@ -3,9 +3,10 @@ import { verifyWebhook, type WebhookEvent } from "@clerk/backend/webhooks";
 import { sql } from "drizzle-orm";
 
 import { db } from "@/server/db";
-import { deletedUsers, users } from "@/server/db/schema";
+import { deletedUsers } from "@/server/db/schema";
 import { inngest } from "@/server/inngest/client";
 import { userDeletedEvent } from "@/server/inngest/events";
+import { upsertClerkAccount } from "@/server/users";
 
 /**
  * Clerk webhook: keeps the `users` table in step with the Clerk accounts.
@@ -14,7 +15,8 @@ import { userDeletedEvent } from "@/server/inngest/events";
  * before the `user.created` of the same account, two updates can cross, and a
  * retried event lands after the ones delivered in the meantime (ADR 0003). So:
  *
- * - `user.created` and `user.updated` are one and the same upsert, applied only
+ * - `user.created` and `user.updated` are one and the same upsert
+ *   (`upsertClerkAccount`, shared with the fallback in `ensureUser`), applied only
  *   when the event's `updated_at` is newer than the stored one and than any
  *   deletion trace, in a single SQL statement. A stale event answers 200 and
  *   changes nothing, so that Clerk (Svix) does not retry it.
@@ -53,13 +55,7 @@ export async function POST(request: Request) {
   }
 }
 
-/**
- * Inserts the Clerk account into `users`, or refreshes email and name if the row
- * exists, unless the event is stale. One statement decides both: the
- * `WHERE NOT EXISTS` skips an account whose deletion trace is as recent as this
- * `updated_at`, and the `DO UPDATE ... WHERE` skips a row that already holds a
- * `updated_at` as recent. No row returned means nothing was written.
- */
+/** Applies a `user.created` or `user.updated` event through the shared stale-proof upsert. */
 async function upsertUser(type: "user.created" | "user.updated", user: UserJSON): Promise<Response> {
   const email = primaryEmail(user);
   if (!email) {
@@ -67,30 +63,21 @@ async function upsertUser(type: "user.created" | "user.updated", user: UserJSON)
     console.error(`[webhooks/clerk] ${type} ${user.id} has no email address`);
     return new Response("User has no email address", { status: 400 });
   }
-  const name = [user.first_name, user.last_name].filter(Boolean).join(" ") || null;
-  const updatedAt = new Date(user.updated_at).toISOString();
 
-  let written: number;
+  let written: boolean;
   try {
-    const result = await db.execute(sql`
-      insert into ${users} (id, email, name, clerk_updated_at)
-      select ${user.id}, ${email}, ${name}, ${updatedAt}::timestamptz
-      where not exists (
-        select 1 from ${deletedUsers}
-        where ${deletedUsers.id} = ${user.id} and ${deletedUsers.deletedAt} >= ${updatedAt}::timestamptz
-      )
-      on conflict (id) do update
-        set email = excluded.email, name = excluded.name, clerk_updated_at = excluded.clerk_updated_at
-        where ${users.clerkUpdatedAt} < excluded.clerk_updated_at
-      returning id
-    `);
-    written = result.rows.length;
+    written = await upsertClerkAccount({
+      id: user.id,
+      email,
+      name: [user.first_name, user.last_name].filter(Boolean).join(" ") || null,
+      updatedAt: new Date(user.updated_at),
+    });
   } catch (error) {
     console.error(`[webhooks/clerk] ${type} ${user.id}: database write failed`, error);
     return new Response("Database write failed", { status: 500 });
   }
 
-  if (written === 0) {
+  if (!written) {
     console.log(`[webhooks/clerk] ${type} ${user.id} ignored: not newer than the stored account or its deletion`);
     return Response.json({ received: true, userId: user.id, ignored: "stale" });
   }
