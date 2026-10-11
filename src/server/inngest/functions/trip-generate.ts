@@ -5,9 +5,10 @@ import { generateItinerary } from "@/server/ai/generate";
 import type { ItineraryInput } from "@/server/ai/prompts";
 import { toUnresolvedContent, type TripContent } from "@/server/ai/schema";
 import { db } from "@/server/db";
-import { jobs, trips, tripVersions } from "@/server/db/schema";
+import { jobs, trips } from "@/server/db/schema";
 import { inngest } from "@/server/inngest/client";
 import { tripGenerateEvent } from "@/server/inngest/events";
+import { firstVersionUpsert } from "@/server/trips/versions";
 import { pickCover, type UnsplashCover } from "@/server/unsplash";
 
 /** Step ids, also what `jobs.current_step` holds and what the progress screen displays. */
@@ -98,10 +99,8 @@ export const tripGenerate = inngest.createFunction(
 
     const saved = await step.run(GENERATION_STEPS.save, async () => {
       await setCurrentStep(jobId, GENERATION_STEPS.save);
-      const [version] = await db
-        .insert(tripVersions)
-        .values({ tripId, versionNumber: 1, content, source: "generate" })
-        .returning({ id: tripVersions.id });
+      // Idempotent: a retry of this step after the insert committed updates the same row.
+      const [version] = await firstVersionUpsert(tripId, content);
       const now = new Date();
       await db.batch([
         db
