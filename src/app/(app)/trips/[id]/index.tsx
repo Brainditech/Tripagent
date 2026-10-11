@@ -100,8 +100,10 @@ function activityMeta(activity: Activity, currency: string): string {
 
 function openUrl(url: string) {
   Linking.openURL(url).catch((error: unknown) => {
-    // No app handles the link (no browser on the device): nothing to do but note it.
-    Sentry.logger.warn("Link could not be opened", { url, message: errorMessage(error) });
+    // No app handles the link (no browser on the device): nothing to do but note it. The host says
+    // which kind of link it was (Google Maps, Unsplash); the full URL stays out of the log.
+    const host = /^[a-z]+:\/\/([^/?#]+)/i.exec(url)?.[1] ?? "unknown";
+    Sentry.logger.warn("Link could not be opened", { host, message: errorMessage(error) });
   });
 }
 
