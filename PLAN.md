@@ -19,7 +19,10 @@ Point de départ : Expo SDK 57 (expo ~57.0.27), RN 0.86.3, React 19.2.3, expo-ro
 src/
   app/                 routes Expo Router uniquement
     (auth)/sign-in.tsx, verify.tsx
-    (app)/_layout.tsx, index.tsx, new-trip.tsx, settings.tsx
+    (app)/_layout.tsx                             (garde de session, Stack)
+    (app)/(tabs)/_layout.tsx                      (NativeTabs : Accueil, Assistant, Voyages, Profil)
+    (app)/(tabs)/index.tsx, assistant.tsx, trips.tsx, profile.tsx
+    (app)/new-trip.tsx, settings.tsx
     (app)/trips/[id]/index.tsx, progress.tsx, chat.tsx, versions.tsx
     legal/privacy.tsx, legal/terms.tsx            (pages web publiques)
     api/**/+api.ts                                (serveur, EAS Hosting)
@@ -132,8 +135,13 @@ But : prouver qu'une step Inngest qui fait un long appel Claude fonctionne sur E
 ## Phase 6 — UI principale
 - [ ] i18n : `expo-localization` + i18next, `locales/fr.json` et `en.json`. Aucune chaîne en dur.
 - [ ] Composants de base NativeWind : Button, Card, Screen, EmptyState, ErrorState, Skeleton.
+- [ ] Onglets natifs (`NativeTabs`, import `expo-router/unstable-native-tabs` en SDK 57) : Accueil (`index`), Assistant (`assistant`), Voyages (`trips`), Profil (`profile`), libellés en français, icônes Material Symbols fournies par expo-symbols.
+  - Pourquoi ces quatre onglets : un par écran principal du plan. Accueil porte la vue d'ensemble de la maquette `design/home-screen-ui-design.jpg` (planificateur IA, « Mes voyages », inspirations de destinations) ; Assistant portera le chat d'ajustement (Phase 7) ; Voyages, la liste complète « Mes voyages » avec suppression (Phase 6) ; Profil, les réglages, la déconnexion et la suppression du compte (Phase 9). La barre d'onglets de la maquette (Accueil, Explorer, Mes Plans, Mon Profil) n'est pas reprise en v1, par choix du propriétaire : les quatre onglets suivent les quatre écrans principaux du plan. Quatre onglets restent sous la limite de cinq de la barre Android.
+  - Fait sur la branche `feat/create-trip` : onglets et écran Accueil en données en dur d'après la maquette. Assistant, Voyages et Profil sont des écrans d'attente ; Profil garde la déconnexion.
 - [ ] Accueil : liste « Mes voyages » (couverture, statut, badge « en cours »), quota restant, bouton « Nouveau voyage », état vide, pull-to-refresh, suppression avec confirmation.
+  - Interface refaite le 11/10/2026 d'après la nouvelle maquette `design/home-screen-ui-design.jpg` sur `feat/create-trip` (données en dur : « Brainditech », trois voyages, cinq inspirations ; photos découpées dans la maquette, texte incrusté effacé). Cette maquette ne montre plus le quota ni le statut des voyages : à replacer (badge sur la carte, écran Nouveau voyage) quand `api/me` et `api/trips` seront branchés. Reste aussi : état vide, pull-to-refresh, suppression.
 - [ ] Nouveau voyage : autocomplete de destination, jours (1–10), presets de voyageurs, 3 niveaux de budget, puis redirection vers la progression.
+  - Interface faite le 11/10/2026 d'après les maquettes `design/new-trip-ui-design-1-top.jpg` et `-2-scrolled.jpg` (un seul écran, défilé) dans `(app)/new-trip.tsx`, ouverte par le bouton « Nouveau voyage » de l'accueil : assistant, destination, calendrier, budget, voyageurs, centres d'intérêt, rythme, bouton « Générer ». Le calendrier est fonctionnel : mois courant, jour du jour sélectionné à l'arrivée, jours et mois passés désactivés, plage choisie en deux touches (début puis fin, toute autre touche repart de zéro), libellé « Du 23 au 26 juin · 4 jours ». Le reste est en état local seulement, rien n'est envoyé. Les maquettes ajoutent au plan des dates (le nombre de jours en découlera), des centres d'intérêt et un rythme ; le calendrier ne plafonne pas encore la plage, alors que le plan limite un voyage à 10 jours. Tout cela est à trancher avant de brancher `api/trips`. La seconde maquette est en anglais et plus sombre ; la palette de la première a été gardée pour tout l'écran.
 - [ ] Progression : polling toutes les 2–3 s (`refetchInterval`), étapes animées, `router.replace` vers le détail quand le voyage est prêt, état d'échec avec bouton « Réessayer ».
 - [ ] Détail : en-tête avec la couverture (Unsplash et crédit « Photo by X on Unsplash » avec liens UTM, ou couverture perso), sections Itinéraire par jour, Hôtels, Budget, Conseils.
 - [ ] `api/trips/[id]/places+api.ts` : Place Details en direct pour les `placeId` d'un jour, chargés à la demande au déroulé du jour. L'URL de la photo est générée à la volée et n'est jamais stockée. Crédit de l'auteur de la photo sous chaque photo Places.
