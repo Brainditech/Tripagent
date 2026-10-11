@@ -30,12 +30,16 @@ const EXTENSIONS: Record<string, string> = {
 };
 
 /**
- * Folder of a trip's covers, under one folder named after the app (the ImageKit media
- * library is shared), then one per user and one per trip, so that any of them can be
- * cleaned up at once.
+ * Folder of every cover of a user, under one folder named after the app (the ImageKit
+ * media library is shared). Deleted with the account.
  */
+export function userCoverFolder(userId: string): string {
+  return `/tripagent/covers/${userId}`;
+}
+
+/** Folder of a trip's covers, one per trip inside the user's folder. */
 export function coverFolder(userId: string, tripId: string): string {
-  return `/tripagent/covers/${userId}/${tripId}`;
+  return `${userCoverFolder(userId)}/${tripId}`;
 }
 
 /** Whether `filePath` names a file right inside this trip's cover folder, as the signed upload produces. */
@@ -44,10 +48,13 @@ export function isCoverPath(filePath: string, userId: string, tripId: string): b
   return filePath.startsWith(prefix) && /^[A-Za-z0-9_-]+(\.[A-Za-z0-9]+)?$/.test(filePath.slice(prefix.length));
 }
 
-/** Body of `PUT /api/trips/[id]/cover`: what ImageKit answered for the uploaded file. */
+/**
+ * Body of `PUT /api/trips/[id]/cover`: the id ImageKit answered for the uploaded
+ * file. The path the app may send along is ignored: the server reads the file back.
+ */
 export const customCoverSchema = z.object({
   fileId: z.string().min(1).max(100),
-  filePath: z.string().min(1).max(500),
+  filePath: z.string().max(500).optional(),
 });
 
 /**
@@ -112,4 +119,61 @@ export type CustomCoverWithUrl = CustomCover & { url: string };
 
 export function coverWithUrl(cover: CustomCover | null): CustomCoverWithUrl | null {
   return cover ? { ...cover, url: coverUrl(cover.filePath) } : null;
+}
+
+// ImageKit's management API, authenticated with the private key (ADR 0005). Used to
+// read a file back after a client-side upload and to delete files and folders.
+
+const API_URL = "https://api.imagekit.io/v1";
+
+function apiHeaders(): Record<string, string> {
+  return { Authorization: `Basic ${btoa(`${requireEnv("IMAGEKIT_PRIVATE_KEY")}:`)}`, Accept: "application/json" };
+}
+
+/** What matters of a stored file: where it is and whether it is an image. */
+export type StoredFile = { fileId: string; filePath: string; fileType: string; size: number | null };
+
+/**
+ * The file ImageKit holds under this id, or null when there is none. The upload
+ * signature binds neither the folder nor the name, so a cover is recorded from
+ * these details and never from what the app declares.
+ */
+export async function fileDetails(fileId: string, fetchImpl: typeof fetch = fetch): Promise<StoredFile | null> {
+  const response = await fetchImpl(`${API_URL}/files/${encodeURIComponent(fileId)}/details`, { headers: apiHeaders() });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`ImageKit answered ${response.status} for file ${fileId}`);
+  const file = (await response.json()) as { filePath?: unknown; fileType?: unknown; size?: unknown };
+  if (typeof file.filePath !== "string" || typeof file.fileType !== "string") {
+    throw new Error(`ImageKit answered without a path or a type for file ${fileId}`);
+  }
+  return { fileId, filePath: file.filePath, fileType: file.fileType, size: typeof file.size === "number" ? file.size : null };
+}
+
+/** Deletes a file; a file already gone counts as deleted. */
+export async function deleteFile(fileId: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const response = await fetchImpl(`${API_URL}/files/${encodeURIComponent(fileId)}`, { method: "DELETE", headers: apiHeaders() });
+  if (!response.ok && response.status !== 404) throw new Error(`ImageKit answered ${response.status} deleting file ${fileId}`);
+}
+
+/** Deletes a file without failing the caller: the database is already right, the leftover is logged. */
+export async function tryDeleteFile(fileId: string, fetchImpl: typeof fetch = fetch): Promise<boolean> {
+  try {
+    await deleteFile(fileId, fetchImpl);
+    return true;
+  } catch (error) {
+    console.error(`[imagekit] file ${fileId} was not deleted`, error);
+    return false;
+  }
+}
+
+/** Deletes a folder with everything in it; a folder already gone counts as deleted. */
+export async function deleteFolder(folderPath: string, fetchImpl: typeof fetch = fetch): Promise<void> {
+  const response = await fetchImpl(`${API_URL}/folder/`, {
+    method: "DELETE",
+    headers: { ...apiHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ folderPath }),
+  });
+  if (!response.ok && response.status !== 404) {
+    throw new Error(`ImageKit answered ${response.status} deleting folder ${folderPath}`);
+  }
 }

@@ -3,9 +3,9 @@ import { z } from "zod";
 
 import { authedRoute } from "@/server/auth";
 import { db } from "@/server/db";
-import { trips } from "@/server/db/schema";
+import { type CustomCover, trips } from "@/server/db/schema";
 import { HttpError } from "@/server/http";
-import { coverUpload, coverWithUrl, customCoverSchema, isCoverPath } from "@/server/imagekit";
+import { coverUpload, coverWithUrl, customCoverSchema, fileDetails, isCoverPath, tryDeleteFile } from "@/server/imagekit";
 import { loadOwnedTrip } from "@/server/trips/access";
 
 const uploadRequestSchema = z.object({ mimeType: z.string().max(100).optional() });
@@ -24,17 +24,24 @@ export const POST = authedRoute(async ({ request, params, userId }) => {
 
 /**
  * Records the uploaded file as the trip's cover, shown instead of the Unsplash
- * photo. Only a file of this trip's folder is accepted: the signature does not
- * bind the folder, so this is where another user's or trip's file is refused.
+ * photo. The upload signature binds neither the folder nor the name (ADR 0005), so
+ * the file is read back from ImageKit by its id and accepted only as an image
+ * stored in this trip's folder. The cover it replaces leaves ImageKit afterwards.
  */
 export const PUT = authedRoute(async ({ request, params, userId }) => {
   const trip = await loadOwnedTrip(params.id, userId);
   const body: unknown = await request.json().catch(() => undefined);
   const parsed = customCoverSchema.safeParse(body);
   if (!parsed.success) throw new HttpError(400, "invalid_cover", z.prettifyError(parsed.error));
-  if (!isCoverPath(parsed.data.filePath, userId, trip.id)) {
-    throw new HttpError(400, "invalid_cover", "The file is not in this trip's cover folder.");
+
+  const file = await fileDetails(parsed.data.fileId);
+  if (!file || file.fileType !== "image" || !isCoverPath(file.filePath, userId, trip.id)) {
+    throw new HttpError(400, "invalid_cover", "The file is not an image in this trip's cover folder.");
   }
-  await db.update(trips).set({ coverCustom: parsed.data, updatedAt: new Date() }).where(eq(trips.id, trip.id));
-  return Response.json({ coverCustom: coverWithUrl(parsed.data) });
+  const cover: CustomCover = { fileId: file.fileId, filePath: file.filePath };
+  await db.update(trips).set({ coverCustom: cover, updatedAt: new Date() }).where(eq(trips.id, trip.id));
+
+  const previous = trip.coverCustom;
+  if (previous && previous.fileId !== cover.fileId) await tryDeleteFile(previous.fileId);
+  return Response.json({ coverCustom: coverWithUrl(cover) });
 });
