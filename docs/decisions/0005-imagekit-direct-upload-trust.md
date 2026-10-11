@@ -26,7 +26,7 @@ Objectif : qu'aucune valeur venue de l'app ne décide de ce qui est enregistré 
 
 Règles appliquées (`src/server/imagekit/index.ts`, `src/app/api/trips/[id]/cover+api.ts`, `src/app/api/trips/[id]+api.ts`, `src/server/inngest/functions/user-deleted.ts`) :
 - `PUT` : `customCoverSchema` n'exige plus que `fileId` ; `fileDetails(fileId)` relit le fichier ; refus en 400 si le fichier n'existe pas, n'est pas une image (`fileType !== "image"`) ou n'est pas directement dans `/tripagent/covers/{userId}/{tripId}/`. Le `filePath` enregistré est celui relu.
-- Remplacement : après l'enregistrement, l'ancien `fileId` est supprimé (`tryDeleteFile`, échec journalisé, jamais fatal : la base est déjà juste).
+- Remplacement : l'enregistrement renvoie la couverture qu'il remplace, dans la même instruction (`update … returning old.cover_custom`, PostgreSQL 18, `src/server/trips/cover.ts`), et c'est ce `fileId` qui est supprimé (`tryDeleteFile`, échec journalisé, jamais fatal : la base est déjà juste). Deux `PUT` simultanés sur le même voyage suppriment ainsi chacun le fichier qu'ils ont réellement remplacé, jamais celui que le voyage garde ; un voyage supprimé entre la lecture et l'écriture répond 404. (Première version : suppression de la couverture lue avant l'écriture, corrigée après la deuxième revue CodeRabbit.)
 - Suppression du voyage : la ligne d'abord, puis le fichier (même règle).
 - Suppression du compte : step Inngest `delete-cover-folder` qui supprime `/tripagent/covers/{userId}` (404 = déjà absent, donc rejouable).
 
@@ -35,6 +35,7 @@ Règles appliquées (`src/server/imagekit/index.ts`, `src/app/api/trips/[id]/cov
 - Fichiers non récupérés : upload réussi sans `PUT` (app fermée, réseau), ou envoyé hors du dossier attendu. À traiter plus tard par une purge périodique de `/tripagent/covers` sur les dossiers sans voyage correspondant ; noté dans PLAN.md.
 - La couverture du voyage Bora Bora enregistrée avant le renommage du dossier (`/covers/…`) sera supprimée d'elle-même au prochain remplacement, par son `fileId`.
 - Le client peut cesser d'envoyer `filePath` ; il reste toléré.
+- `RETURNING old` exige PostgreSQL 18 : la branche Neon de développement est en 18.6, la production sera dans le même projet Neon.
 
 ## Commit
 `1125e88` (`fix(covers): verify the uploaded file through ImageKit and delete superseded or orphaned files`, branche `feat/create-trip`).
@@ -45,3 +46,7 @@ Preuve, le 11/10/2026 (heure de Paris) :
 - Tests unitaires de `fileDetails`, `deleteFile`, `tryDeleteFile` et `deleteFolder` (en-tête Basic, 404 toléré, 500 refusé) et du schéma du `PUT`.
 
 Non vérifiés en conditions réelles : la suppression du dossier à la suppression d'un compte (step Inngest, même appel que le test de dossier ci-dessus) et la suppression de l'ancien fichier au remplacement (même appel que `deleteFile`).
+
+`89ce31f` (`fix(covers): delete the cover the swap statement displaced, not the one read before`) : la couverture supprimée est celle que l'instruction d'écriture renvoie, voir « Remplacement » ci-dessus.
+
+Preuve, le 11/10/2026 (heure de Paris), script jetable sur la branche Neon de développement, voyage « bali » `f46c2742` (couverture `null`) : deux écritures concurrentes, A lente (`pg_sleep(2)` avant le verrou de ligne, lancée à 22:52:17.356) et B rapide (lancée 500 ms plus tard, terminée à 22:52:17.902 avec `previous = null`). A s'est terminée à 22:52:21.424 avec `previous = B`, et non la valeur `null` lue au départ ; la couverture finale est A. Un id de voyage inconnu renvoie 0 ligne (404 dans la route). Ligne remise à `null` ensuite. Test unitaire du rendu SQL (`src/server/trips/cover.test.ts`). `npm test` : 56 tests ; `tsc --noEmit` et `expo lint` passent.
