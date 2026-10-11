@@ -10,7 +10,7 @@ Chaque décision est écrite et reliée au commit qui la prouve. Les nouvelles d
 | [0003](0003-clerk-webhook-event-ordering.md) | Ordre des événements du webhook Clerk : écriture seulement si `updated_at` est plus récent, trace des comptes supprimés | `2ff4e85` |
 | [0004](0004-monthly-quota-reservation.md) | Quota mensuel réservé dans `monthly_generations` par un seul `INSERT … ON CONFLICT … WHERE used < limite`, survit à la suppression des voyages | `1c041cb` |
 | [0005](0005-imagekit-direct-upload-trust.md) | Upload direct ImageKit : le fichier est relu par son `fileId` avec la clé privée avant d'être enregistré ; suppression au remplacement, avec le voyage et avec le compte | `1125e88`, `89ce31f` |
-| [0006](0006-app-sentry-logs.md) | Logs Sentry côté app : les échecs d'appels API journalisés une fois dans le client (`createApi`), l'issue des opérations et les erreurs Clerk dans les écrans et `src/lib`, attributs `snake_case` sans donnée personnelle | `9fd4341`, `21f5763`, `fbc0c1c`, `5dec0a4` |
+| [0006](0006-app-sentry-logs.md) | Logs Sentry côté app : les échecs d'appels API journalisés une fois dans le client (`createApi`), l'issue des opérations et les erreurs Clerk dans les écrans et `src/lib`, attributs `snake_case` sans donnée personnelle | `9fd4341`, `21f5763`, `fbc0c1c`, `5dec0a4`, `035e564` |
 
 ## Décisions déjà prises avant les ADR
 Une ligne par décision, avec la raison **telle qu'elle est écrite** dans PLAN.md, AGENTS.md ou un commit. Si rien n'est écrit, elle est marquée « raison non consignée ». « Pas encore implémentée » signifie que la décision figure dans PLAN.md (`e625881`) mais qu'aucun commit ne la réalise encore.
