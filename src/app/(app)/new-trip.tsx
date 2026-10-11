@@ -41,6 +41,7 @@ import {
   type Pace,
   PACES,
   toIsoDate,
+  tripDays,
 } from "@/lib/trip-rules";
 
 // UI texts, grouped here so they can move to i18n in Phase 6.
@@ -170,10 +171,11 @@ export default function NewTripScreen() {
   const createTrip = useMutation({
     mutationFn: (body: NewTripBody) => api.post<{ tripId: string }>("/api/trips", body),
     onSuccess: ({ tripId }, body) => {
-      // The inputs of the generation, next to the trip id the progress screen will report on.
+      // The inputs of the generation, next to the trip id the progress screen will report on; read
+      // from the body that was sent, not from the form state, which may have moved on since.
       Sentry.logger.info("Trip generation requested", {
         trip_id: tripId,
-        days: rangeDays(dates),
+        days: tripDays(body.startDate, body.endDate),
         travelers: body.travelers,
         budget: body.budget,
         pace: body.pace,
