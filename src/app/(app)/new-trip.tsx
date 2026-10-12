@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/react-native";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -167,10 +167,12 @@ export default function NewTripScreen() {
     });
 
   // POST /api/trips answers 202 with the trip id as soon as the job is queued; the progress
-  // screen then follows the generation.
+  // screen then follows the generation, and the lists read the new trip when they come back.
+  const queryClient = useQueryClient();
   const createTrip = useMutation({
     mutationFn: (body: NewTripBody) => api.post<{ tripId: string }>("/api/trips", body),
     onSuccess: ({ tripId }, body) => {
+      void queryClient.invalidateQueries({ queryKey: ["trips"] });
       // The inputs of the generation, next to the trip id the progress screen will report on; read
       // from the body that was sent, not from the form state, which may have moved on since.
       Sentry.logger.info("Trip generation requested", {
