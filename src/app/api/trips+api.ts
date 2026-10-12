@@ -1,11 +1,11 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { tripDays } from "@/lib/trip-rules";
 import { authedRoute } from "@/server/auth";
 import { config } from "@/server/config";
 import { db } from "@/server/db";
-import { jobs, trips, users } from "@/server/db/schema";
+import { jobs, trips, tripVersions, users } from "@/server/db/schema";
 import { HttpError } from "@/server/http";
 import { coverWithUrl } from "@/server/imagekit";
 import { inngest } from "@/server/inngest/client";
@@ -15,7 +15,11 @@ import { quotaMonth, releaseTripQuota, reserveTripQuota } from "@/server/trips/q
 import { newTripSchema } from "@/server/trips/schema";
 import { ensureUser } from "@/server/users";
 
-/** The user's trips, newest first, as the home list shows them. */
+/**
+ * The user's trips, newest first, as the lists show them: the form fields, the status, the
+ * covers, and from the current version (none until the generation is done) the title and the
+ * estimated cost per person, read in SQL so that the content itself stays out of the list.
+ */
 export const GET = authedRoute(async ({ userId }) => {
   const rows = await db
     .select({
@@ -29,15 +33,21 @@ export const GET = authedRoute(async ({ userId }) => {
       coverUnsplash: trips.coverUnsplash,
       coverCustom: trips.coverCustom,
       createdAt: trips.createdAt,
+      title: sql<string | null>`${tripVersions.content} ->> 'title'`,
+      currency: sql<string | null>`${tripVersions.content} ->> 'currency'`,
+      costPerPerson: sql<string | null>`${tripVersions.content} #>> '{budget,perPerson,total}'`,
     })
     .from(trips)
+    .leftJoin(tripVersions, eq(tripVersions.id, trips.currentVersionId))
     .where(eq(trips.userId, userId))
     .orderBy(desc(trips.createdAt));
   return Response.json({
-    trips: rows.map((trip) => ({
+    trips: rows.map(({ title, currency, costPerPerson, ...trip }) => ({
       ...trip,
       days: tripDays(trip.startDate, trip.endDate),
       coverCustom: coverWithUrl(trip.coverCustom),
+      title,
+      estimatedCost: currency && costPerPerson !== null ? { perPerson: Number(costPerPerson), currency } : null,
     })),
   });
 });

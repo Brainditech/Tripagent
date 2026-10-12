@@ -1,55 +1,39 @@
+import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { HOME_ACCENT, type Inspiration, InspirationCard, ListMessage, TripCard } from "@/components/home-ui";
 import { ArrowRightIcon, BellIcon, GearIcon, SparkleIcon } from "@/components/icons";
-import { type Inspiration, InspirationCard, type Trip, TripCard } from "@/components/home-ui";
+import { useRefreshOnFocus } from "@/hooks/use-refresh-on-focus";
+import { useTripDeletion } from "@/hooks/use-trip-deletion";
+import { useApi } from "@/lib/api";
+import { tripHref, tripsQueryOptions } from "@/lib/trips";
 
 // UI texts, grouped here so they can move to i18n in Phase 6.
 const TEXTS = {
   greeting: "Bonjour de nouveau,",
-  question: "Où irez-vous ensuite ?",
+  question: "Où irez-vous ensuite ?",
   settings: "Réglages",
   notifications: "Notifications",
   plannerLabel: "Planificateur IA",
   plannerTitle: "Planifiez votre\nprochain voyage",
-  plannerSubtitle: "Dites-nous où, combien de temps et avec qui,\non s’occupe du reste !",
+  plannerSubtitle: "Dites-nous où, combien de temps et avec qui,\non s’occupe du reste !",
   newTrip: "Nouveau voyage",
   yourTrips: "Vos voyages",
   myTrips: "Mes voyages",
+  seeAll: "Voir tout",
+  empty: "Aucun voyage pour l’instant. Créez le premier avec « Nouveau voyage ».",
+  unreachable: "Impossible de charger vos voyages. Vérifiez votre connexion.",
+  retry: "Réessayer",
   inspiration: "Inspiration de voyage",
 } as const;
 
-// Hard-coded data until Phase 4 (api/me, api/trips) feeds the screen.
+// Hard-coded until api/me feeds the screen (Phase 6).
 const USER = { firstName: "Brainditech", avatar: require("@/assets/images/avatar-placeholder.jpg") };
-const TRIPS: Trip[] = [
-  {
-    id: "istanbul",
-    title: "5 jours à Istanbul, Turquie",
-    location: "Istanbul, Turquie",
-    days: 5,
-    costPerPerson: 525,
-    cover: require("@/assets/images/trip-istanbul.jpg"),
-  },
-  {
-    id: "cappadoce",
-    title: "4 jours en Cappadoce (Montgolfières)",
-    location: "Göreme, Turquie",
-    days: 4,
-    costPerPerson: 530,
-    cover: require("@/assets/images/trip-cappadoce.jpg"),
-  },
-  {
-    id: "kyoto",
-    title: "5 jours à Kyoto, Japon",
-    location: "Kyoto, Japon",
-    days: 5,
-    costPerPerson: 980,
-    cover: require("@/assets/images/trip-kyoto.jpg"),
-  },
-];
 const INSPIRATIONS: Inspiration[] = [
   { id: "bali", title: "Plages de Bali", subtitle: "Détente & Nature", cover: require("@/assets/images/inspiration-bali.jpg") },
   { id: "kyoto", title: "Aventure à Kyoto", subtitle: "Culture & Cuisine", cover: require("@/assets/images/inspiration-kyoto.jpg") },
@@ -58,12 +42,31 @@ const INSPIRATIONS: Inspiration[] = [
   { id: "cinque-terre", title: "Cinque Terre", subtitle: "Villages & Mer", cover: require("@/assets/images/trip-cinque-terre.jpg") },
 ];
 
-const ACCENT = "#1C4C82";
+/** The home shows the latest trips; the Voyages tab has them all. */
+const HOME_TRIPS = 3;
+
+const ACCENT = HOME_ACCENT;
 const BUTTON_SHADOW = { boxShadow: "0 3px 10px rgba(5, 30, 60, 0.22)" } as const;
 
 // Sizes follow design/home-screen-ui-design.jpg: 1 reference px = 0.708 dp.
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
+  const api = useApi();
+
+  // The user's trips, read again when the screen comes back (a generation may have ended) and on pull.
+  const tripsQuery = useQuery(tripsQueryOptions(api));
+  useRefreshOnFocus(tripsQuery.refetch);
+  const [refreshing, setRefreshing] = useState(false);
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      await tripsQuery.refetch();
+    } finally {
+      setRefreshing(false);
+    }
+  };
+  const { confirmDelete, deletingId } = useTripDeletion();
+  const trips = tripsQuery.data?.trips ?? [];
 
   return (
     <View className="flex-1 bg-[#F9F9FB]">
@@ -71,6 +74,15 @@ export default function HomeScreen() {
       <ScrollView
         contentContainerStyle={{ paddingTop: insets.top + 28, paddingBottom: 24 }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => void refresh()}
+            colors={[ACCENT]}
+            tintColor={ACCENT}
+            progressViewOffset={insets.top}
+          />
+        }
       >
         {/* Avatar, greeting and the settings / notifications buttons. */}
         <View className="mx-[17px] h-[50px] flex-row items-center">
@@ -81,7 +93,7 @@ export default function HomeScreen() {
             <View className="flex-row items-center">
               <Text numberOfLines={1} className="shrink font-sans text-[14px] leading-[20px] text-[#111111]">
                 {TEXTS.greeting} {USER.firstName}
-                {" !"}
+                {" !"}
               </Text>
               <Text className="ml-[4px] text-[13px] leading-[20px]">👋</Text>
             </View>
@@ -139,17 +151,45 @@ export default function HomeScreen() {
           </Pressable>
         </View>
 
-        {/* Trips of the month. */}
+        {/* The latest trips; the count is the whole list's, which the Voyages tab shows. */}
         <Text className="mx-[17px] mt-[7px] font-sans-bold text-[17.7px] leading-[22px] text-[#111111]">
           {TEXTS.yourTrips}
         </Text>
-        <Text className="mx-[17px] mt-[6px] font-sans text-[15.7px] leading-[20px] text-[#111111]">
-          {TEXTS.myTrips} ({TRIPS.length})
-        </Text>
+        <View className="mx-[17px] mt-[6px] flex-row items-center">
+          <Text className="flex-1 font-sans text-[15.7px] leading-[20px] text-[#111111]">
+            {TEXTS.myTrips}
+            {tripsQuery.data ? ` (${trips.length})` : ""}
+          </Text>
+          {trips.length > HOME_TRIPS ? (
+            <Pressable accessibilityRole="link" onPress={() => router.navigate("/trips")} hitSlop={8}>
+              <Text className="font-sans-medium text-[13.5px] leading-[20px]" style={{ color: ACCENT }}>
+                {TEXTS.seeAll}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
         <View className="mt-[10px] gap-[12px]">
-          {TRIPS.map((trip) => (
-            <TripCard key={trip.id} trip={trip} />
-          ))}
+          {tripsQuery.isPending ? (
+            <View className="items-center py-[24px]">
+              <ActivityIndicator color={ACCENT} />
+            </View>
+          ) : tripsQuery.isError ? (
+            <ListMessage text={TEXTS.unreachable} action={TEXTS.retry} onAction={() => void tripsQuery.refetch()} />
+          ) : trips.length === 0 ? (
+            <ListMessage text={TEXTS.empty} />
+          ) : (
+            trips
+              .slice(0, HOME_TRIPS)
+              .map((trip) => (
+                <TripCard
+                  key={trip.id}
+                  trip={trip}
+                  onPress={() => router.push(tripHref(trip))}
+                  onLongPress={() => confirmDelete(trip.id)}
+                  deleting={deletingId === trip.id}
+                />
+              ))
+          )}
         </View>
 
         {/* Destination ideas, scrolled sideways. */}

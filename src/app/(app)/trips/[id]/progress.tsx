@@ -1,5 +1,5 @@
 import * as Sentry from "@sentry/react-native";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef } from "react";
@@ -70,6 +70,7 @@ export default function ProgressScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id: string }>();
   const api = useApi();
+  const queryClient = useQueryClient();
 
   const status = useQuery({
     queryKey: ["trip-status", id],
@@ -87,6 +88,11 @@ export default function ProgressScreen() {
   useEffect(() => {
     if (loaded) router.replace({ pathname: "/trips/[id]", params: { id } });
   }, [loaded, id]);
+
+  // The trip's card in the lists changes with the outcome (title, cover, badge).
+  useEffect(() => {
+    if (tripStatus === "ready" || tripStatus === "failed") void queryClient.invalidateQueries({ queryKey: ["trips"] });
+  }, [tripStatus, queryClient]);
 
   const failed = tripStatus === "failed";
   const unreachable = status.isError || trip.isError;
