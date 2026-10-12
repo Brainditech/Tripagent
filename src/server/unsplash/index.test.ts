@@ -1,6 +1,6 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { cachedPhoto, clearPhotoCache } from "@/server/unsplash";
+import { cachedPhoto, clearPhotoCache, pickCover } from "@/server/unsplash";
 
 const photo = {
   id: "abc123",
@@ -33,6 +33,22 @@ describe("cachedPhoto", () => {
     expect(second).toBe(first);
     // One search and one download trigger, not two of each.
     expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
+  it("answers null, not an error, when no access key is configured", async () => {
+    const key = process.env.UNSPLASH_ACCESS_KEY;
+    delete process.env.UNSPLASH_ACCESS_KEY;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const fetchImpl = fakeUnsplash([photo]);
+      await expect(pickCover("Lisbon, Portugal", fetchImpl)).resolves.toBeNull();
+      await expect(cachedPhoto("Lisbon, Portugal", fetchImpl)).resolves.toBeNull();
+      expect(fetchImpl).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalled();
+    } finally {
+      process.env.UNSPLASH_ACCESS_KEY = key;
+      warn.mockRestore();
+    }
   });
 
   it("does not remember a miss, so the next request searches again", async () => {

@@ -29,13 +29,13 @@ const API = "https://api.unsplash.com";
 /**
  * Picks the first landscape photo matching the destination and triggers its
  * `download_location`, which the Unsplash guidelines require whenever a photo is
- * selected. Returns null when nothing matches or when Unsplash fails: a trip
- * without cover is better than a failed trip, and the demo rate limit (50/h) would
- * otherwise turn into retries.
+ * selected. Returns null when nothing matches, when Unsplash fails or when no access
+ * key is configured: a trip without cover is better than a failed trip, and the demo
+ * rate limit (50/h) would otherwise turn into retries.
  */
 export async function pickCover(query: string, fetchImpl: typeof fetch = fetch): Promise<UnsplashCover | null> {
-  const headers = { Authorization: `Client-ID ${requireEnv("UNSPLASH_ACCESS_KEY")}`, "Accept-Version": "v1" };
   try {
+    const headers = { Authorization: `Client-ID ${requireEnv("UNSPLASH_ACCESS_KEY")}`, "Accept-Version": "v1" };
     const params = new URLSearchParams({ query, per_page: "1", orientation: "landscape", content_filter: "high" });
     const response = await fetchImpl(`${API}/search/photos?${params}`, { headers });
     if (!response.ok) {
