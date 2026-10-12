@@ -113,8 +113,13 @@ export function GearIcon({ width = 21, color = INK }: IconProps) {
   );
 }
 
-// Outlined bell with an unread dot in its top-right corner.
-export function BellIcon({ width = 20, color = INK, dotColor = "#D9485A" }: IconProps & { dotColor?: string }) {
+// Outlined bell with an unread dot in its top-right corner (`dot={false}` for the plain bell).
+export function BellIcon({
+  width = 20,
+  color = INK,
+  dot = true,
+  dotColor = "#D9485A",
+}: IconProps & { dot?: boolean; dotColor?: string }) {
   return (
     <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
       <Path d="M10.3 21a2 2 0 0 0 3.4 0" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
@@ -125,7 +130,7 @@ export function BellIcon({ width = 20, color = INK, dotColor = "#D9485A" }: Icon
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <Circle cx={19} cy={4.6} r={3.4} fill={dotColor} stroke="#F9F9FB" strokeWidth={1.2} />
+      {dot ? <Circle cx={19} cy={4.6} r={3.4} fill={dotColor} stroke="#F9F9FB" strokeWidth={1.2} /> : null}
     </Svg>
   );
 }
@@ -294,6 +299,159 @@ export function MoreIcon({ width = 20, color = INK }: IconProps) {
       <Circle cx={5} cy={12} r={2.2} fill={color} />
       <Circle cx={12} cy={12} r={2.2} fill={color} />
       <Circle cx={19} cy={12} r={2.2} fill={color} />
+    </Svg>
+  );
+}
+
+// Icons of the Profil tab, after design/profile-ui-design-1-top.png and -2-scrolled.png.
+
+// Filled aeroplane seen from above, the "Voyages" figure.
+export function PlaneIcon({ width = 15, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24">
+      <Path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z" fill={color} />
+    </Svg>
+  );
+}
+
+// Outlined globe with its equator and one meridian, the "Destinations" figure.
+export function GlobeIcon({ width = 15, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={2} />
+      <Path
+        d="M3 12h18M12 3c2.8 2.6 4 5.6 4 9s-1.2 6.4-4 9c-2.8-2.6-4-5.6-4-9s1.2-6.4 4-9z"
+        stroke={color}
+        strokeWidth={2}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// Three sliders, the "Préférences de voyage" row.
+export function TuneIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path d="M3 6h9.6M17.4 6H21M3 12h3.6M11.4 12H21M3 18h9.6M17.4 18H21" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      <Circle cx={15} cy={6} r={2.2} stroke={color} strokeWidth={1.8} />
+      <Circle cx={9} cy={12} r={2.2} stroke={color} strokeWidth={1.8} />
+      <Circle cx={15} cy={18} r={2.2} stroke={color} strokeWidth={1.8} />
+    </Svg>
+  );
+}
+
+// Outlined ticket with its side notches and perforation, the "Quota mensuel" row.
+export function TicketIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v1.5a2.5 2.5 0 0 0 0 5V16a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1.5a2.5 2.5 0 0 0 0-5z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <Path d="M15 6.5v1.5M15 11v2M15 16v1.5" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// Outlined crescent moon, the "Apparence" row.
+export function MoonIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" stroke={color} strokeWidth={1.8} strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// A latin "A" beside an ideograph, the "Langue" row.
+export function TranslateIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M3 6h9M7.5 4v2M10.5 6c-.7 3.8-3.4 6.9-7.5 8.6M5.3 9.4c1 2.3 2.9 4.1 5.4 5.2"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <Path d="M12.5 20l3.8-9.5 3.8 9.5M13.9 16.5h4.8" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// Question mark in a circle, the "Aide et support" row.
+export function HelpIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Circle cx={12} cy={12} r={9} stroke={color} strokeWidth={1.8} />
+      <Path d="M9.3 9.5a2.7 2.7 0 1 1 3.9 2.4c-.8.4-1.2 1-1.2 1.8v.3" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      <Circle cx={12} cy={17.2} r={1} fill={color} />
+    </Svg>
+  );
+}
+
+// Outlined shield with a check mark, the "Politique de confidentialité" row.
+export function ShieldIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 3l7.5 2.8v5.4c0 4.5-3.2 8.3-7.5 9.8-4.3-1.5-7.5-5.3-7.5-9.8V5.8z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+      <Path d="M9 12l2.1 2.1L15 10" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// Outlined sheet with a folded corner and two lines, the "Conditions d'utilisation" row.
+export function DocumentIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path d="M7 3h7l5 5v12a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z" stroke={color} strokeWidth={1.8} strokeLinejoin="round" />
+      <Path d="M14 3v5h5M9 13h6M9 17h6" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
+    </Svg>
+  );
+}
+
+// Outlined five-point star, the "Noter Tripagent" row.
+export function StarIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path
+        d="M12 3.6l2.6 5.3 5.8.8-4.2 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.2-4.1 5.8-.8z"
+        stroke={color}
+        strokeWidth={1.8}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// Outlined gift box with its bow, the "Inviter des amis" row.
+export function GiftIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path d="M4 11h16v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM3 7h18v4H3zM12 7v14" stroke={color} strokeWidth={1.8} strokeLinejoin="round" />
+      <Path
+        d="M12 7c-.8-2.4-3.6-2.6-3.6-.9 0 1.1 2 1 3.6.9zm0 0c.8-2.4 3.6-2.6 3.6-.9 0 1.1-2 1-3.6.9z"
+        stroke={color}
+        strokeWidth={1.6}
+        strokeLinejoin="round"
+      />
+    </Svg>
+  );
+}
+
+// Door frame with an arrow leaving it, the "Se déconnecter" button.
+export function LogoutIcon({ width = 18, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24" fill="none">
+      <Path d="M10 4H5.5A1.5 1.5 0 0 0 4 5.5v13A1.5 1.5 0 0 0 5.5 20H10" stroke={color} strokeWidth={1.8} strokeLinecap="round" />
+      <Path d="M15 8l4 4-4 4M19 12H9" stroke={color} strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
 }
