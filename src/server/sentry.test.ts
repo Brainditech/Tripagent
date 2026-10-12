@@ -1,5 +1,5 @@
 import { wrapRequestHandler } from "@sentry/cloudflare/request";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { instrumentAnthropic, withSentry } from "@/server/sentry";
 
@@ -11,6 +11,10 @@ vi.mock("@sentry/cloudflare/request", () => ({
 
 const wrap = vi.mocked(wrapRequestHandler);
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("withSentry", () => {
   it("runs the route through the SDK's request wrapper, with the request, the options and an execution context", async () => {
     const request = new Request("http://localhost/api/trips/42");
@@ -21,7 +25,6 @@ describe("withSentry", () => {
 
     const [wrapperOptions] = wrap.mock.calls[0]!;
     expect(wrapperOptions.request).toBe(request);
-    expect(wrapperOptions.options.dsn).toMatch(/^https:\/\/\w+@o\d+\.ingest\.de\.sentry\.io\/\d+$/);
     expect(wrapperOptions.options).toMatchObject({
       tracesSampleRate: 1.0,
       tracePropagationTargets: [],
@@ -47,7 +50,23 @@ describe("withSentry", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(settled).toBe(true);
   });
+
+  it("sends to SENTRY_DSN when it is set, and to the app's project when it is not", async () => {
+    const sink = "http://public@localhost:8969/1";
+    expect((await optionsWithDsn(sink)).dsn).toBe(sink);
+    expect((await optionsWithDsn(undefined)).dsn).toMatch(/^https:\/\/\w+@o\d+\.ingest\.de\.sentry\.io\/\d+$/);
+  });
 });
+
+/** The SDK options of a route when the server starts with `SENTRY_DSN` set to `dsn`: they are read at import. */
+async function optionsWithDsn(dsn: string | undefined) {
+  vi.stubEnv("SENTRY_DSN", dsn);
+  vi.resetModules();
+  const { withSentry: reloaded } = await import("@/server/sentry");
+  const { wrapRequestHandler: reloadedWrap } = await import("@sentry/cloudflare/request");
+  await reloaded(async () => new Response())(new Request("http://localhost/api/me"));
+  return vi.mocked(reloadedWrap).mock.calls.at(-1)![0].options;
+}
 
 describe("instrumentAnthropic", () => {
   it("wraps messages.stream in place and keeps the stream the SDK returns", () => {
