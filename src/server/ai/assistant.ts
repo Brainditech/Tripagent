@@ -192,23 +192,27 @@ function defaultClient(): Anthropic {
  * the reply text as it is written, then the answer once the tool input is validated with Zod.
  * Lists longer than the prompt allows are cut rather than refused. Errors are thrown from the
  * iteration: SDK errors as they are, an answer the SDK cannot read as an `AssistantAnswerError`;
- * `assistantHttpError` turns them into responses. Leaving the iteration early aborts the request.
+ * `assistantHttpError` turns them into responses. Leaving the iteration early aborts the request,
+ * and so does `signal`, at once: the iteration then throws the SDK's `APIUserAbortError`.
  */
 export async function* answerTraveller(
-  input: { messages: AssistantTurn[]; locale: string },
+  input: { messages: AssistantTurn[]; locale: string; signal?: AbortSignal },
   client: Anthropic = defaultClient(),
 ): AsyncGenerator<AssistantProgress, void> {
-  const stream = client.messages.stream({
-    model: config.aiModel,
-    max_tokens: MAX_OUTPUT_TOKENS,
-    system: [
-      { type: "text", text: ASSISTANT_SYSTEM_PROMPT },
-      { type: "text", text: `Language of every text: ${languageName(input.locale)}.` },
-    ],
-    messages: input.messages.map(({ role, content }) => ({ role, content })),
-    tools: [ANSWER_TOOL],
-    tool_choice: { type: "tool", name: ANSWER_TOOL.name },
-  });
+  const stream = client.messages.stream(
+    {
+      model: config.aiModel,
+      max_tokens: MAX_OUTPUT_TOKENS,
+      system: [
+        { type: "text", text: ASSISTANT_SYSTEM_PROMPT },
+        { type: "text", text: `Language of every text: ${languageName(input.locale)}.` },
+      ],
+      messages: input.messages.map(({ role, content }) => ({ role, content })),
+      tools: [ANSWER_TOOL],
+      tool_choice: { type: "tool", name: ANSWER_TOOL.name },
+    },
+    { signal: input.signal },
+  );
 
   // Reading the events and the final message are wrapped together: the SDK parses the tool input
   // when its block ends and throws from whichever of the two is awaited at that moment.

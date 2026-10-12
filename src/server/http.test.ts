@@ -49,6 +49,21 @@ describe("jsonLinesResponse", () => {
     await finished;
     expect(seen).toBeInstanceOf(ClientGoneError);
   });
+
+  it("aborts the producer's signal as soon as the client goes, without waiting for a line", async () => {
+    let clientGone!: AbortSignal;
+    const response = jsonLinesResponse<string>(async (send, signal) => {
+      clientGone = signal;
+      send("first");
+      await new Promise((resolve) => signal.addEventListener("abort", resolve));
+    });
+    const reader = response.body!.getReader();
+    await reader.read();
+    expect(clientGone.aborted).toBe(false);
+    await reader.cancel();
+    expect(clientGone.aborted).toBe(true);
+    expect(clientGone.reason).toBeInstanceOf(ClientGoneError);
+  });
 });
 
 describe("toHttpError", () => {
