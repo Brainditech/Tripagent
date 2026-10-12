@@ -47,6 +47,9 @@ const TEXTS = {
   },
 } as const;
 
+/** A request: the turns to send, and the conversation they belong to. */
+type AskVariables = { history: ChatTurn[]; generation: number };
+
 /** The welcome the app writes itself; it is shown, never sent. */
 function welcomeMessage(): ChatMessage {
   return { id: newMessageId(), role: "assistant", content: TEXTS.welcome, at: Date.now(), local: true };
@@ -80,9 +83,15 @@ export default function AssistantScreen() {
   const [messages, setMessages] = useState<ChatMessage[]>(() => [welcomeMessage()]);
   const [draft, setDraft] = useState("");
 
+  // Bumped by "Nouvelle conversation". `reset()` detaches the screen from a request in flight but
+  // does not stop it, and its `onSuccess` still runs: a reply to a request from before the clear
+  // carries an older generation and is dropped instead of landing in the fresh conversation.
+  const generation = useRef(0);
+
   const ask = useMutation({
-    mutationFn: (history: ChatTurn[]) => askAssistant(api, history),
-    onSuccess: (reply) =>
+    mutationFn: ({ history }: AskVariables) => askAssistant(api, history),
+    onSuccess: (reply, variables) => {
+      if (variables.generation !== generation.current) return;
       setMessages((current) => [
         ...current,
         {
@@ -93,7 +102,8 @@ export default function AssistantScreen() {
           destinations: reply.destinations,
           suggestions: reply.suggestions,
         },
-      ]),
+      ]);
+    },
   });
 
   const send = (text: string) => {
@@ -102,7 +112,7 @@ export default function AssistantScreen() {
     const next: ChatMessage[] = [...messages, { id: newMessageId(), role: "user", content, at: Date.now() }];
     setMessages(next);
     setDraft("");
-    ask.mutate(toHistory(next));
+    ask.mutate({ history: toHistory(next), generation: generation.current });
   };
 
   const startOver = () =>
@@ -112,6 +122,7 @@ export default function AssistantScreen() {
         text: TEXTS.clear,
         style: "destructive",
         onPress: () => {
+          generation.current += 1;
           ask.reset();
           setMessages([welcomeMessage()]);
         },
@@ -154,7 +165,11 @@ export default function AssistantScreen() {
         )}
         {ask.isPending ? <TypingIndicator label={TEXTS.writing} /> : null}
         {ask.isError ? (
-          <ErrorBubble message={askError(ask.error)} retryLabel={TEXTS.retry} onRetry={() => ask.mutate(toHistory(messages))} />
+          <ErrorBubble
+            message={askError(ask.error)}
+            retryLabel={TEXTS.retry}
+            onRetry={() => ask.mutate({ history: toHistory(messages), generation: generation.current })}
+          />
         ) : null}
       </ScrollView>
 
