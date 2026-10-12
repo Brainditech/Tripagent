@@ -277,3 +277,23 @@ export function CheckIcon({ width = 20, color = "#FFFFFF" }: IconProps) {
     </Svg>
   );
 }
+
+// Filled paper plane, the send button of the assistant (Material "send").
+export function SendIcon({ width = 22, color = "#FFFFFF" }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24">
+      <Path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" fill={color} />
+    </Svg>
+  );
+}
+
+// Three dots in a row, the "more" button.
+export function MoreIcon({ width = 20, color = INK }: IconProps) {
+  return (
+    <Svg width={width} height={width} viewBox="0 0 24 24">
+      <Circle cx={5} cy={12} r={2.2} fill={color} />
+      <Circle cx={12} cy={12} r={2.2} fill={color} />
+      <Circle cx={19} cy={12} r={2.2} fill={color} />
+    </Svg>
+  );
+}

@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
 import { LinearGradient } from "expo-linear-gradient";
-import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
@@ -28,6 +27,7 @@ import {
 } from "@/components/trip-detail-ui";
 import { useApi } from "@/lib/api";
 import { formatDay, formatMoney } from "@/lib/format";
+import { openUrl } from "@/lib/links";
 import {
   customCoverUrl,
   googleMapsUrl,
@@ -95,16 +95,6 @@ function activityMeta(activity: Activity, currency: string): string {
     activity.estimatedCost > 0 ? `${formatMoney(activity.estimatedCost, currency)} ${TEXTS.perPersonShort}` : TEXTS.free,
   );
   return parts.join(" · ");
-}
-
-function openUrl(url: string) {
-  Linking.openURL(url).catch(() => {
-    // No app handles the link (no browser on the device): nothing to do but note it. The host says
-    // which kind of link it was (Google Maps, Unsplash); the full URL stays out of the log, and so
-    // does the rejection message, which repeats it ("Could not open URL '…'").
-    const host = /^[a-z]+:\/\/([^/?#]+)/i.exec(url)?.[1] ?? "unknown";
-    Sentry.logger.warn("Link could not be opened", { host });
-  });
 }
 
 const BUDGET_CATEGORIES = ["accommodation", "food", "activities", "transport"] as const;

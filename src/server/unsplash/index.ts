@@ -29,13 +29,13 @@ const API = "https://api.unsplash.com";
 /**
  * Picks the first landscape photo matching the destination and triggers its
  * `download_location`, which the Unsplash guidelines require whenever a photo is
- * selected. Returns null when nothing matches or when Unsplash fails: a trip
- * without cover is better than a failed trip, and the demo rate limit (50/h) would
- * otherwise turn into retries.
+ * selected. Returns null when nothing matches, when Unsplash fails or when no access
+ * key is configured: a trip without cover is better than a failed trip, and the demo
+ * rate limit (50/h) would otherwise turn into retries.
  */
 export async function pickCover(query: string, fetchImpl: typeof fetch = fetch): Promise<UnsplashCover | null> {
-  const headers = { Authorization: `Client-ID ${requireEnv("UNSPLASH_ACCESS_KEY")}`, "Accept-Version": "v1" };
   try {
+    const headers = { Authorization: `Client-ID ${requireEnv("UNSPLASH_ACCESS_KEY")}`, "Accept-Version": "v1" };
     const params = new URLSearchParams({ query, per_page: "1", orientation: "landscape", content_filter: "high" });
     const response = await fetchImpl(`${API}/search/photos?${params}`, { headers });
     if (!response.ok) {
@@ -60,4 +60,37 @@ export async function pickCover(query: string, fetchImpl: typeof fetch = fetch):
     console.warn(`[unsplash] search "${query}" failed`, error);
     return null;
   }
+}
+
+/** Most destination photos remembered; past that, the oldest entry leaves first. */
+const MAX_CACHED_PHOTOS = 200;
+
+const photoCache = new Map<string, Promise<UnsplashCover | null>>();
+
+/**
+ * The photo of a destination card of the assistant, looked up once per process: the same
+ * destination comes back often ("Lisbon, Portugal"), and the demo rate limit (50/h) would not
+ * take four requests per answer for long. A miss or a failure is not kept, so that the next
+ * request may find the photo.
+ */
+export function cachedPhoto(query: string, fetchImpl: typeof fetch = fetch): Promise<UnsplashCover | null> {
+  const key = query.trim().toLowerCase();
+  const cached = photoCache.get(key);
+  if (cached) return cached;
+
+  const lookup = pickCover(query, fetchImpl).then((photo) => {
+    if (!photo) photoCache.delete(key);
+    return photo;
+  });
+  photoCache.set(key, lookup);
+  if (photoCache.size > MAX_CACHED_PHOTOS) {
+    const oldest = photoCache.keys().next().value;
+    if (oldest !== undefined) photoCache.delete(oldest);
+  }
+  return lookup;
+}
+
+/** Forgets every photo; for the tests. */
+export function clearPhotoCache(): void {
+  photoCache.clear();
 }
