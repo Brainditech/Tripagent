@@ -1,4 +1,3 @@
-import * as Sentry from "@sentry/react-native";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
@@ -25,6 +24,7 @@ import {
   StatTile,
   TipRow,
 } from "@/components/trip-detail-ui";
+import { useTripDeletion } from "@/hooks/use-trip-deletion";
 import { useApi } from "@/lib/api";
 import { formatDay, formatMoney } from "@/lib/format";
 import { openUrl } from "@/lib/links";
@@ -46,12 +46,6 @@ const TEXTS = {
   coverFailedTitle: "Photo non enregistrée",
   coverFailed: "La photo n’a pas pu être envoyée. Vérifiez votre connexion et réessayez.",
   deleteTrip: "Supprimer le voyage",
-  deleteTitle: "Supprimer ce voyage ?",
-  deleteMessage: "L’itinéraire et toutes ses versions seront supprimés. Cette action est définitive.",
-  cancel: "Annuler",
-  delete: "Supprimer",
-  deleteFailedTitle: "Suppression impossible",
-  deleteFailed: "Le voyage n’a pas pu être supprimé. Vérifiez votre connexion et réessayez.",
   assistant: "Assistant",
   unreachable: "Impossible de charger le voyage. Vérifiez votre connexion.",
   retry: "Réessayer",
@@ -120,35 +114,17 @@ export default function TripDetailScreen() {
   const buttonTop = insets.top + 8;
   const goBack = () => (router.canGoBack() ? router.back() : router.replace("/"));
 
-  // DELETE cascades to the versions, messages and jobs; the cached copies go with it.
-  const deleteTrip = useMutation({
-    mutationFn: () => api.delete(`/api/trips/${id}`),
-    onSuccess: () => {
-      Sentry.logger.info("Trip deleted", { trip_id: id });
-      queryClient.removeQueries({ queryKey: ["trip", id] });
-      queryClient.removeQueries({ queryKey: ["trip-status", id] });
-      router.replace("/");
-    },
-    // The API client has logged the refusal.
-    onError: () => Alert.alert(TEXTS.deleteFailedTitle, TEXTS.deleteFailed),
-  });
-  const confirmDelete = () => {
-    Alert.alert(
-      TEXTS.deleteTitle,
-      TEXTS.deleteMessage,
-      [
-        { text: TEXTS.cancel, style: "cancel" },
-        { text: TEXTS.delete, style: "destructive", onPress: () => deleteTrip.mutate() },
-      ],
-      { cancelable: true },
-    );
-  };
+  // Confirmed, then back to the home once the trip is gone.
+  const { confirmDelete, deletingId } = useTripDeletion({ onDeleted: () => router.replace("/") });
+  const deleting = deletingId === id;
 
-  // The photo goes straight from the phone to ImageKit, then the API records it; the cached trip follows.
+  // The photo goes straight from the phone to ImageKit, then the API records it; the cached trip
+  // follows, and the lists read theirs again for the card's photo.
   const changeCover = useMutation({
     mutationFn: (image: PickedImage) => uploadTripCover(api, id, image),
     onSuccess: (coverCustom) => {
       queryClient.setQueryData<TripResponse>(["trip", id], (current) => (current ? { ...current, coverCustom } : current));
+      void queryClient.invalidateQueries({ queryKey: ["trips"] });
     },
     // uploadTripCover has logged which step failed and why.
     onError: () => Alert.alert(TEXTS.coverFailedTitle, TEXTS.coverFailed),
@@ -371,14 +347,14 @@ export default function TripDetailScreen() {
       />
       <CoverButton
         icon={
-          deleteTrip.isPending ? (
+          deleting ? (
             <ActivityIndicator size="small" color={DETAIL_COLORS.accent} />
           ) : (
             <TrashIcon width={19} color={DETAIL_COLORS.ink} />
           )
         }
         label={TEXTS.deleteTrip}
-        onPress={deleteTrip.isPending ? undefined : confirmDelete}
+        onPress={deleting ? undefined : () => confirmDelete(id)}
         className="absolute right-[16px]"
         style={{ top: buttonTop }}
       />

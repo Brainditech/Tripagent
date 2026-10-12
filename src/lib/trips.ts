@@ -53,6 +53,62 @@ export function tripQueryOptions(api: Api, id: string) {
   });
 }
 
+/** One row of `GET /api/trips`: what a card of the lists shows, without the content. */
+export type TripSummary = {
+  id: string;
+  destinationName: string;
+  startDate: string;
+  endDate: string;
+  days: number;
+  travelers: number;
+  budget: BudgetLevel;
+  status: TripStatus;
+  coverUnsplash: UnsplashCover | null;
+  coverCustom: CustomCoverWithUrl | null;
+  createdAt: string;
+  /** From the current version's content: null until the generation has produced one. */
+  title: string | null;
+  estimatedCost: { perPerson: number; currency: string } | null;
+};
+
+export type TripsResponse = { trips: TripSummary[] };
+
+/** A list with a generation in it is read again this often, so that its card ends up with its title and cover. */
+const GENERATION_POLL_MS = 5000;
+
+/** True while the trip's generation is queued or running. */
+export function isGenerating(trip: Pick<TripSummary, "status">): boolean {
+  return trip.status === "queued" || trip.status === "generating";
+}
+
+/**
+ * The user's trips, newest first; shared by the home and the Voyages tab so that one request
+ * serves both. The list is polled while one of its trips is being generated, and only then.
+ */
+export function tripsQueryOptions(api: Api) {
+  return queryOptions({
+    queryKey: ["trips"],
+    queryFn: () => api.get<TripsResponse>("/api/trips"),
+    refetchInterval: (query) => (query.state.data?.trips.some(isGenerating) ? GENERATION_POLL_MS : false),
+  });
+}
+
+/** Where a card leads: the progress screen while the trip is generated, the detail otherwise (which explains a failure). */
+export function tripHref(trip: Pick<TripSummary, "id" | "status">) {
+  return isGenerating(trip)
+    ? ({ pathname: "/trips/[id]/progress", params: { id: trip.id } } as const)
+    : ({ pathname: "/trips/[id]", params: { id: trip.id } } as const);
+}
+
+/**
+ * The image of a card: the user's own cover sized for the card, else the Unsplash photo in the
+ * size the detail loads (so the cache serves both), else none (trip not ready, nothing on Unsplash).
+ */
+export function tripCoverUri(trip: Pick<TripSummary, "coverUnsplash" | "coverCustom">, widthPx: number): string | null {
+  if (trip.coverCustom) return customCoverUrl(trip.coverCustom, widthPx);
+  return trip.coverUnsplash?.urls.regular ?? null;
+}
+
 /** Google Maps search for a place, by its `placeId` when it was resolved, by its name otherwise. */
 export function googleMapsUrl(place: { query: string; placeId: string | null }): string {
   const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.query)}`;
