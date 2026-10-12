@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/cloudflare";
+
 /** Body of every error response: `{ error: { code, message } }`. */
 export function jsonError(status: number, code: string, message: string): Response {
   return Response.json({ error: { code, message } }, { status });
@@ -21,11 +23,13 @@ export class HttpError extends Error {
 
 /**
  * The error a route answers with: an `HttpError` as it is; anything else is logged with the
- * route and becomes a 500 that reveals nothing.
+ * route (EAS Hosting keeps the console), captured as a Sentry issue (the request's scope carries
+ * the route and the user) and becomes a 500 that reveals nothing.
  */
 export function toHttpError(request: Request, error: unknown): HttpError {
   if (error instanceof HttpError) return error;
   console.error(`[api] ${request.method} ${new URL(request.url).pathname} failed`, error);
+  Sentry.captureException(error);
   return new HttpError(500, "internal_error", "Something went wrong.");
 }
 

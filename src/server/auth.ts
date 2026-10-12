@@ -1,7 +1,9 @@
 import { createClerkClient } from "@clerk/backend";
+import * as Sentry from "@sentry/cloudflare";
 
 import { requireEnv } from "@/server/config";
 import { HttpError, toHttpError } from "@/server/http";
+import { withSentry } from "@/server/sentry";
 
 let client: ReturnType<typeof createClerkClient> | undefined;
 
@@ -30,17 +32,21 @@ type RouteParams = Record<string, string>;
 type AuthedContext = { request: Request; params: RouteParams; userId: string };
 
 /**
- * Wraps an API route handler: the Clerk JWT is verified before anything else,
- * an `HttpError` becomes its JSON response, and any other error is logged and
- * answered with a 500 that reveals nothing (`toHttpError`).
+ * Wraps an API route handler: the request runs under Sentry (`withSentry`), the Clerk JWT is
+ * verified before anything else and the user id is put on the request's scope, an `HttpError`
+ * becomes its JSON response, and any other error is logged, captured and answered with a 500
+ * that reveals nothing (`toHttpError`).
  */
 export function authedRoute(handler: (context: AuthedContext) => Promise<Response>) {
-  return async (request: Request, params: RouteParams = {}): Promise<Response> => {
+  return withSentry(async (request, params) => {
     try {
       const { userId } = await requireUser(request);
+      // The Clerk id, and nothing else, on the request's events, logs and `gen_ai` spans (the User
+      // column of Sentry's Conversations).
+      Sentry.setUser({ id: userId });
       return await handler({ request, params, userId });
     } catch (error) {
       return toHttpError(request, error).toResponse();
     }
-  };
+  });
 }

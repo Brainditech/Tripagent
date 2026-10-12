@@ -2,7 +2,7 @@ import * as Sentry from "@sentry/react-native";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { type Api, ApiError } from "@/lib/api";
-import { askAssistant, type ChatMessage, readJsonLines, toHistory } from "@/lib/assistant";
+import { askAssistant, type ChatMessage, newConversationId, readJsonLines, toHistory } from "@/lib/assistant";
 import { MAX_HISTORY_MESSAGES } from "@/lib/assistant-rules";
 
 // The lib runs in the app; here its pure parts and its reading of the API's answer are under test
@@ -124,5 +124,19 @@ describe("askAssistant", () => {
     await expect(askAssistant(api, history, { signal: controller.signal })).rejects.toThrow(/aborted/);
     expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
+  });
+});
+
+describe("conversation id", () => {
+  it("is sent with the turns, so that the server can group them", async () => {
+    const stream = vi.fn(async () => new Response(bodyOf([JSON.stringify(answer)])));
+    await askAssistant({ stream } as unknown as Api, history, { conversationId: "c-1" });
+    expect(stream).toHaveBeenCalledWith("/api/assistant", { messages: history, conversationId: "c-1" }, undefined);
+  });
+
+  it("is new each time and fits what the server accepts", () => {
+    const first = newConversationId();
+    expect(first).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
+    expect(newConversationId()).not.toBe(first);
   });
 });

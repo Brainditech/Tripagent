@@ -1,6 +1,10 @@
+import * as Sentry from "@sentry/cloudflare";
 import { describe, expect, it, vi } from "vitest";
 
 import { ClientGoneError, HttpError, JSON_LINES_CONTENT_TYPE, jsonLinesResponse, toHttpError } from "@/server/http";
+
+// Only the capture matters here; nothing must reach Sentry from the tests (vi.mock is hoisted).
+vi.mock("@sentry/cloudflare", () => ({ captureException: vi.fn() }));
 
 describe("jsonLinesResponse", () => {
   it("writes one JSON value per line as they are sent, then closes the body", async () => {
@@ -54,12 +58,13 @@ describe("toHttpError", () => {
     expect(toHttpError(request, known)).toBe(known);
   });
 
-  it("logs anything else with the route and answers a 500 that reveals nothing", () => {
+  it("logs anything else with the route, captures it and answers a 500 that reveals nothing", () => {
     const request = new Request("http://localhost/api/assistant?x=1", { method: "POST" });
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const error = new Error("boom");
     expect(toHttpError(request, error)).toMatchObject({ status: 500, code: "internal_error", message: "Something went wrong." });
     expect(log).toHaveBeenCalledWith("[api] POST /api/assistant failed", error);
+    expect(Sentry.captureException).toHaveBeenCalledWith(error);
     log.mockRestore();
   });
 });

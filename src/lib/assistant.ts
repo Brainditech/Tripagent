@@ -38,6 +38,11 @@ export function newMessageId(): string {
   return `${Date.now()}-${nextMessageId}`;
 }
 
+/** An id for one conversation, sent with each of its turns so that Sentry groups them; nothing is stored under it. */
+export function newConversationId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /**
  * The turns sent with a request: the welcome stays on the device, only the latest turns go
  * (the chat is stateless and the server bounds the history), and the sent part starts with the
@@ -79,6 +84,8 @@ export type AskOptions = {
   onText?: (text: string) => void;
   /** Gives the request up (the traveller cleared the conversation); nothing is logged then. */
   signal?: AbortSignal;
+  /** The id of the conversation (`newConversationId`), which groups its turns in Sentry. */
+  conversationId?: string;
 };
 
 /**
@@ -94,7 +101,7 @@ export async function askAssistant(api: Api, history: ChatTurn[], options: AskOp
   let text = "";
   let reply: AssistantReply | null = null;
 
-  const response = await api.stream("/api/assistant", { messages: history }, options.signal);
+  const response = await api.stream("/api/assistant", { messages: history, conversationId: options.conversationId }, options.signal);
   try {
     if (!response.body) throw new Error("The answer has no body");
     await readJsonLines<AssistantStreamEvent>(response.body, (event) => {

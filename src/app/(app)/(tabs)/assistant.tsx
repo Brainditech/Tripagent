@@ -17,7 +17,7 @@ import {
   WritingBubble,
 } from "@/components/assistant-ui";
 import { ApiError, useApi } from "@/lib/api";
-import { askAssistant, type ChatMessage, type ChatTurn, newMessageId, toHistory } from "@/lib/assistant";
+import { askAssistant, type ChatMessage, type ChatTurn, newConversationId, newMessageId, toHistory } from "@/lib/assistant";
 import { MAX_MESSAGE_LENGTH } from "@/lib/assistant-rules";
 import { openUrl } from "@/lib/links";
 import { unsplashReferralUrl } from "@/lib/trips";
@@ -93,6 +93,8 @@ export default function AssistantScreen() {
   const generation = useRef(0);
   // The request in flight, given up by "Nouvelle conversation" so that Claude stops writing too.
   const inFlight = useRef<AbortController | null>(null);
+  // Sent with every turn so that Sentry groups the conversation's Claude calls; renewed by "Nouvelle conversation".
+  const conversationId = useRef(newConversationId());
 
   const ask = useMutation({
     mutationFn: ({ history, generation: asked }: AskVariables) => {
@@ -100,6 +102,7 @@ export default function AssistantScreen() {
       inFlight.current = controller;
       return askAssistant(api, history, {
         signal: controller.signal,
+        conversationId: conversationId.current,
         onText: (text) => {
           if (asked === generation.current) setWriting(text);
         },
@@ -142,6 +145,7 @@ export default function AssistantScreen() {
         onPress: () => {
           inFlight.current?.abort();
           generation.current += 1;
+          conversationId.current = newConversationId();
           ask.reset();
           setWriting(null);
           setMessages([welcomeMessage()]);
