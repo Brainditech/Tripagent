@@ -190,7 +190,19 @@ export function SuggestionRow({ suggestions, disabled, onPress }: SuggestionsPro
   );
 }
 
-/** The assistant is writing. */
+/** The reply as the assistant writes it, with a mark where the next words will land. */
+export function WritingBubble({ text }: { text: string }) {
+  return (
+    <AssistantBubble>
+      <Text className="font-sans text-[15.5px] leading-[21px] text-[#1A1A1A]">
+        {text}
+        <Text className="text-[#4C97F7]">▍</Text>
+      </Text>
+    </AssistantBubble>
+  );
+}
+
+/** The assistant is about to write. */
 export function TypingIndicator({ label }: { label: string }) {
   return (
     <AssistantBubble>

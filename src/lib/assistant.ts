@@ -1,19 +1,20 @@
 import * as Sentry from "@sentry/react-native";
 
-import type { Api } from "@/lib/api";
+import { type Api, ApiError } from "@/lib/api";
 import { MAX_HISTORY_MESSAGES } from "@/lib/assistant-rules";
-import type { UnsplashCover } from "@/server/unsplash";
+import { errorMessage } from "@/lib/errors";
+import type { AssistantDestination, AssistantStreamEvent } from "@/server/ai/assistant";
 
 // The travel chat of the Assistant tab, as the screen keeps it and as the API answers it. The
-// cover type comes from the server as `import type` only, so nothing of the server is bundled.
+// server types come as `import type` only, so nothing of the server is bundled.
 
 export type ChatRole = "user" | "assistant";
 
 /** A destination card of an answer, with its Unsplash photo when one was found. */
-export type Destination = { name: string; country: string; reason: string; photo: UnsplashCover | null };
+export type Destination = AssistantDestination;
 
-/** Answer of `POST /api/assistant`. */
-export type AssistantReply = { message: string; destinations: Destination[]; suggestions: string[] };
+/** The last line of `POST /api/assistant`: the whole answer. */
+export type AssistantReply = Omit<Extract<AssistantStreamEvent, { type: "answer" }>, "type">;
 
 /** A turn as the API receives it. */
 export type ChatTurn = { role: ChatRole; content: string };
@@ -37,6 +38,11 @@ export function newMessageId(): string {
   return `${Date.now()}-${nextMessageId}`;
 }
 
+/** An id for one conversation, sent with each of its turns so that Sentry groups them; nothing is stored under it. */
+export function newConversationId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 /**
  * The turns sent with a request: the welcome stays on the device, only the latest turns go
  * (the chat is stateless and the server bounds the history), and the sent part starts with the
@@ -52,17 +58,85 @@ export function toHistory(messages: ChatMessage[]): ChatTurn[] {
 }
 
 /**
- * Sends the conversation and returns the assistant's next turn. A failed request is already
- * logged by the API client; an answer is logged with its shape, never its text.
+ * Reads a response written line by line (`application/x-ndjson`) and calls `onLine` with each
+ * JSON value as soon as its line is complete. Lines may be cut anywhere by the network, even in
+ * the middle of a character: the decoder keeps the bytes it needs.
  */
-export async function askAssistant(api: Api, history: ChatTurn[]): Promise<AssistantReply> {
+export async function readJsonLines<T>(body: ReadableStream<Uint8Array>, onLine: (line: T) => void): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffered = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (value) buffered += decoder.decode(value, { stream: true });
+    if (done) buffered += decoder.decode();
+    const lines = buffered.split("\n");
+    buffered = done ? "" : (lines.pop() ?? "");
+    for (const line of lines) {
+      if (line.trim()) onLine(JSON.parse(line) as T);
+    }
+    if (done) return;
+  }
+}
+
+export type AskOptions = {
+  /** Called with the reply as Claude writes it, a little longer each time. */
+  onText?: (text: string) => void;
+  /** Gives the request up (the traveller cleared the conversation); nothing is logged then. */
+  signal?: AbortSignal;
+  /** The id of the conversation (`newConversationId`), which groups its turns in Sentry. */
+  conversationId?: string;
+};
+
+/**
+ * Sends the conversation and returns the assistant's next turn, reporting the reply text while
+ * it is written. A request rejected before the first line is already logged by the API client,
+ * and throws its `ApiError`; a failure told on the last line throws the same `ApiError` and is
+ * logged here, as is an answer cut before its last line. An answer is logged with its shape and
+ * timings, never its text.
+ */
+export async function askAssistant(api: Api, history: ChatTurn[], options: AskOptions = {}): Promise<AssistantReply> {
   const startedAt = Date.now();
-  const reply = await api.post<AssistantReply>("/api/assistant", { messages: history });
+  let firstTextAt: number | null = null;
+  let text = "";
+  let reply: AssistantReply | null = null;
+
+  const response = await api.stream("/api/assistant", { messages: history, conversationId: options.conversationId }, options.signal);
+  try {
+    if (!response.body) throw new Error("The answer has no body");
+    await readJsonLines<AssistantStreamEvent>(response.body, (event) => {
+      if (event.type === "text") {
+        firstTextAt ??= Date.now();
+        text += event.delta;
+        options.onText?.(text);
+      } else if (event.type === "answer") {
+        reply = { message: event.message, destinations: event.destinations, suggestions: event.suggestions };
+      } else if (event.type === "error") {
+        throw new ApiError(event.status, event.code, event.message);
+      }
+    });
+    if (!reply) throw new Error("The answer ended before its last line");
+  } catch (error) {
+    if (options.signal?.aborted) throw error;
+    const status = error instanceof ApiError ? error.status : null;
+    const log = status !== null && status < 500 ? Sentry.logger.warn : Sentry.logger.error;
+    log("Assistant answer failed", {
+      turns: history.length,
+      status,
+      code: error instanceof ApiError ? error.code : null,
+      message: errorMessage(error),
+      duration_ms: Date.now() - startedAt,
+    });
+    throw error;
+  }
+
+  const answer: AssistantReply = reply;
   Sentry.logger.info("Assistant answered", {
     turns: history.length,
-    destinations: reply.destinations.length,
-    suggestions: reply.suggestions.length,
+    destinations: answer.destinations.length,
+    suggestions: answer.suggestions.length,
+    first_text_ms: firstTextAt === null ? null : firstTextAt - startedAt,
     duration_ms: Date.now() - startedAt,
   });
-  return reply;
+  return answer;
 }

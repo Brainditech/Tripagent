@@ -60,6 +60,43 @@ describe("createApi", () => {
     );
   });
 
+  it("streams the response of an accepted request, with the token and the line content type", async () => {
+    const fetchMock = answering(200, { ok: true });
+    const api = createApi(async () => "token", fetchMock);
+    const response = await api.stream("/api/assistant", { messages: [] });
+    expect(response.ok).toBe(true);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/assistant",
+      expect.objectContaining({
+        method: "POST",
+        headers: { Accept: "application/x-ndjson, application/json", Authorization: "Bearer token", "Content-Type": "application/json" },
+      }),
+    );
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("rejects a refused stream like the JSON calls, logged once", async () => {
+    const api = createApi(async () => "token", answering(422, { error: { code: "assistant_refused", message: "No." } }));
+    await expect(api.stream("/api/assistant", {})).rejects.toMatchObject({ status: 422, code: "assistant_refused" });
+    expect(warn).toHaveBeenCalledWith(
+      "API request rejected",
+      expect.objectContaining({ method: "POST", route: "/api/assistant", status: 422, code: "assistant_refused" }),
+    );
+  });
+
+  it("passes the signal to fetch and logs nothing when the caller gave the request up", async () => {
+    const controller = new AbortController();
+    const givenUp = vi.fn(async () => {
+      controller.abort();
+      throw new DOMException("The operation was aborted.", "AbortError");
+    }) as unknown as typeof fetch;
+    const api = createApi(async () => "token", givenUp);
+    await expect(api.stream("/api/assistant", {}, controller.signal)).rejects.toThrow(/aborted/);
+    expect(givenUp).toHaveBeenCalledWith("/api/assistant", expect.objectContaining({ signal: controller.signal }));
+    expect(warn).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it("logs a request that got no answer as a warning, then rethrows", async () => {
     const offline = vi.fn(async () => {
       throw new TypeError("Network request failed");

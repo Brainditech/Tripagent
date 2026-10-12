@@ -14,9 +14,10 @@ import {
   SuggestionRow,
   TypingIndicator,
   UserBubble,
+  WritingBubble,
 } from "@/components/assistant-ui";
 import { ApiError, useApi } from "@/lib/api";
-import { askAssistant, type ChatMessage, type ChatTurn, newMessageId, toHistory } from "@/lib/assistant";
+import { askAssistant, type ChatMessage, type ChatTurn, newConversationId, newMessageId, toHistory } from "@/lib/assistant";
 import { MAX_MESSAGE_LENGTH } from "@/lib/assistant-rules";
 import { openUrl } from "@/lib/links";
 import { unsplashReferralUrl } from "@/lib/trips";
@@ -73,8 +74,9 @@ function askError(error: unknown): string {
 
 /**
  * The travel companion, after design/assistant-ui-design.png: a chat with Claude about anything
- * travel, with destination cards and follow-up suggestions in its answers. The conversation
- * lives in this screen for the session and goes with every request; nothing is stored.
+ * travel, with destination cards and follow-up suggestions in its answers. The reply shows up as
+ * Claude writes it, then the whole answer takes its place. The conversation lives in this screen
+ * for the session and goes with every request; nothing is stored.
  */
 export default function AssistantScreen() {
   const insets = useSafeAreaInsets();
@@ -82,14 +84,30 @@ export default function AssistantScreen() {
   const scrollRef = useRef<ScrollView>(null);
   const [messages, setMessages] = useState<ChatMessage[]>(() => [welcomeMessage()]);
   const [draft, setDraft] = useState("");
+  // The reply as Claude writes it, until the answer lands.
+  const [writing, setWriting] = useState<string | null>(null);
 
   // Bumped by "Nouvelle conversation". `reset()` detaches the screen from a request in flight but
   // does not stop it, and its `onSuccess` still runs: a reply to a request from before the clear
   // carries an older generation and is dropped instead of landing in the fresh conversation.
   const generation = useRef(0);
+  // The request in flight, given up by "Nouvelle conversation" so that Claude stops writing too.
+  const inFlight = useRef<AbortController | null>(null);
+  // Sent with every turn so that Sentry groups the conversation's Claude calls; renewed by "Nouvelle conversation".
+  const conversationId = useRef(newConversationId());
 
   const ask = useMutation({
-    mutationFn: ({ history }: AskVariables) => askAssistant(api, history),
+    mutationFn: ({ history, generation: asked }: AskVariables) => {
+      const controller = new AbortController();
+      inFlight.current = controller;
+      return askAssistant(api, history, {
+        signal: controller.signal,
+        conversationId: conversationId.current,
+        onText: (text) => {
+          if (asked === generation.current) setWriting(text);
+        },
+      });
+    },
     onSuccess: (reply, variables) => {
       if (variables.generation !== generation.current) return;
       setMessages((current) => [
@@ -103,6 +121,9 @@ export default function AssistantScreen() {
           suggestions: reply.suggestions,
         },
       ]);
+    },
+    onSettled: (_reply, _error, variables) => {
+      if (variables.generation === generation.current) setWriting(null);
     },
   });
 
@@ -122,8 +143,11 @@ export default function AssistantScreen() {
         text: TEXTS.clear,
         style: "destructive",
         onPress: () => {
+          inFlight.current?.abort();
           generation.current += 1;
+          conversationId.current = newConversationId();
           ask.reset();
+          setWriting(null);
           setMessages([welcomeMessage()]);
         },
       },
@@ -163,7 +187,7 @@ export default function AssistantScreen() {
             </AssistantBubble>
           ),
         )}
-        {ask.isPending ? <TypingIndicator label={TEXTS.writing} /> : null}
+        {ask.isPending ? writing ? <WritingBubble text={writing} /> : <TypingIndicator label={TEXTS.writing} /> : null}
         {ask.isError ? (
           <ErrorBubble
             message={askError(ask.error)}

@@ -2,21 +2,29 @@ import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
 
 import { MAX_DESTINATIONS, MAX_HISTORY_MESSAGES, MAX_MESSAGE_LENGTH, MAX_SUGGESTIONS } from "@/lib/assistant-rules";
+import { errorMessage } from "@/lib/errors";
 import { languageName } from "@/server/ai/prompts";
 import { toStrictJsonSchema } from "@/server/ai/schema";
 import { config, requireEnv } from "@/server/config";
 import { HttpError } from "@/server/http";
+import { instrumentAnthropic } from "@/server/sentry";
+import type { UnsplashCover } from "@/server/unsplash";
 
 // The travel companion of the Assistant tab: one Claude call per turn, the conversation coming
 // with the request (nothing is stored). Claude answers through a strict tool so that the reply
-// text, the destination cards and the follow-up suggestions arrive as validated JSON.
+// text, the destination cards and the follow-up suggestions arrive as validated JSON; the reply
+// text is read out of that JSON as it is written, so the app can show it word by word.
 
 const turnSchema = z.object({
   role: z.enum(["user", "assistant"]),
   content: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
 });
 
-/** Body of POST /api/assistant: the conversation so far, ending with the traveller's new message. */
+/**
+ * Body of POST /api/assistant: the conversation so far, ending with the traveller's new message, and
+ * the id the app gave the conversation when it began, which groups its turns in Sentry (nothing is
+ * stored under it).
+ */
 export const assistantRequestSchema = z.object({
   messages: z
     .array(turnSchema)
@@ -26,6 +34,7 @@ export const assistantRequestSchema = z.object({
       (messages) => messages[0].role === "user" && messages[messages.length - 1].role === "user",
       "The conversation must start and end with a user message",
     ),
+  conversationId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
 });
 export type AssistantTurn = z.infer<typeof turnSchema>;
 
@@ -52,6 +61,9 @@ const ANSWER_TOOL: Anthropic.Tool = {
   name: "answer",
   description: "Answers the traveller: the reply text, optional destination cards and follow-up suggestions.",
   strict: true,
+  // The input comes in fragments as Claude writes it, instead of once complete: that is what lets
+  // the reply be shown as it is written (`messageSoFar`). Strict mode keeps the JSON well formed.
+  eager_input_streaming: true,
   input_schema: toStrictJsonSchema(assistantAnswerSchema) as Anthropic.Tool.InputSchema,
 };
 
@@ -77,6 +89,28 @@ export type AssistantResult = {
   model: string;
   usage: { inputTokens: number; outputTokens: number };
 };
+
+/** What `answerTraveller` yields: Claude's go-ahead, the reply as it is written, then the answer. */
+export type AssistantProgress =
+  /** Claude accepted the request and began the answer; anything that fails before this is an HTTP error. */
+  | { type: "start" }
+  /** The next piece of the reply text, to append to the previous ones. */
+  | { type: "text"; delta: string }
+  /** The validated answer, always last. */
+  | { type: "answer"; result: AssistantResult };
+
+/** A destination card as the route sends it: with its Unsplash photo, or none when Unsplash has nothing. */
+export type AssistantDestination = AssistantAnswer["destinations"][number] & { photo: UnsplashCover | null };
+
+/**
+ * The lines of the `POST /api/assistant` response (one JSON value each, `application/x-ndjson`):
+ * `text` while Claude writes, then `answer`; or `error` when the answer failed after the response
+ * had begun, with the status and code the route would have answered with before the first byte.
+ */
+export type AssistantStreamEvent =
+  | { type: "text"; delta: string }
+  | { type: "answer"; message: string; destinations: AssistantDestination[]; suggestions: string[] }
+  | { type: "error"; status: number; code: string; message: string };
 
 /** Claude declined the message (safety): the traveller is told to ask something else. */
 export class AssistantRefusedError extends Error {
@@ -111,33 +145,93 @@ export function fitMessage(text: string): string | null {
   return `${room.trimEnd()}…`;
 }
 
-/** The SDK client is built on first use, so that a missing key fails the request and not the import. */
+const JSON_ESCAPES: Record<string, string> = { '"': '"', "\\": "\\", "/": "/", b: "\b", f: "\f", n: "\n", r: "\r", t: "\t" };
+
+/**
+ * The `message` field of the `answer` input as far as Claude has written it. The input is JSON
+ * text that arrives in fragments, and the SDK's tolerant parser leaves an unfinished string out,
+ * so the value is read here: from the quote that opens it to the one that closes it, or to the end
+ * of what has arrived. Escapes are decoded on the way; one cut by a fragment boundary waits for
+ * the next fragment, as does the first half of a surrogate pair written as two escapes. Null until
+ * the field has started.
+ */
+export function messageSoFar(json: string): string | null {
+  const field = /"message"\s*:\s*"/.exec(json);
+  if (!field) return null;
+  let text = "";
+  for (let i = field.index + field[0].length; i < json.length; i += 1) {
+    const char = json[i];
+    if (char === '"') return text;
+    if (char !== "\\") {
+      text += char;
+      continue;
+    }
+    const escape = json[i + 1];
+    if (escape === undefined) break;
+    if (escape === "u") {
+      const hex = json.slice(i + 2, i + 6);
+      if (hex.length < 4) break;
+      text += String.fromCharCode(parseInt(hex, 16));
+      i += 5;
+    } else {
+      text += JSON_ESCAPES[escape] ?? escape;
+      i += 1;
+    }
+  }
+  const last = text.charCodeAt(text.length - 1);
+  return last >= 0xd800 && last <= 0xdbff ? text.slice(0, -1) : text;
+}
+
+/** The SDK client is built on first use, so that a missing key fails the request and not the import; Sentry traces its calls. */
 function defaultClient(): Anthropic {
-  return new Anthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") });
+  return instrumentAnthropic(new Anthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") }));
 }
 
 /**
- * Asks Claude for the next turn of the chat through the `answer` tool (forced, strict), then
- * validates the tool input with Zod. Lists longer than the prompt allows are cut rather than
- * refused. SDK errors are thrown as they are; `assistantHttpError` turns them into responses.
+ * Asks Claude for the next turn of the chat through the `answer` tool (forced, strict), yielding
+ * the reply text as it is written, then the answer once the tool input is validated with Zod.
+ * Lists longer than the prompt allows are cut rather than refused. Errors are thrown from the
+ * iteration: SDK errors as they are, an answer the SDK cannot read as an `AssistantAnswerError`;
+ * `assistantHttpError` turns them into responses. Leaving the iteration early aborts the request.
  */
-export async function answerTraveller(
+export async function* answerTraveller(
   input: { messages: AssistantTurn[]; locale: string },
   client: Anthropic = defaultClient(),
-): Promise<AssistantResult> {
-  const message = await client.messages
-    .stream({
-      model: config.aiModel,
-      max_tokens: MAX_OUTPUT_TOKENS,
-      system: [
-        { type: "text", text: ASSISTANT_SYSTEM_PROMPT },
-        { type: "text", text: `Language of every text: ${languageName(input.locale)}.` },
-      ],
-      messages: input.messages.map(({ role, content }) => ({ role, content })),
-      tools: [ANSWER_TOOL],
-      tool_choice: { type: "tool", name: ANSWER_TOOL.name },
-    })
-    .finalMessage();
+): AsyncGenerator<AssistantProgress, void> {
+  const stream = client.messages.stream({
+    model: config.aiModel,
+    max_tokens: MAX_OUTPUT_TOKENS,
+    system: [
+      { type: "text", text: ASSISTANT_SYSTEM_PROMPT },
+      { type: "text", text: `Language of every text: ${languageName(input.locale)}.` },
+    ],
+    messages: input.messages.map(({ role, content }) => ({ role, content })),
+    tools: [ANSWER_TOOL],
+    tool_choice: { type: "tool", name: ANSWER_TOOL.name },
+  });
+
+  // Reading the events and the final message are wrapped together: the SDK parses the tool input
+  // when its block ends and throws from whichever of the two is awaited at that moment.
+  let message: Anthropic.Message;
+  try {
+    let json = "";
+    let shown = "";
+    for await (const event of stream) {
+      if (event.type === "message_start") yield { type: "start" };
+      if (event.type !== "content_block_delta" || event.delta.type !== "input_json_delta") continue;
+      json += event.delta.partial_json;
+      const text = messageSoFar(json);
+      if (text && text.length > shown.length) {
+        const delta = text.slice(shown.length);
+        shown = text;
+        yield { type: "text", delta };
+      }
+    }
+    message = await stream.finalMessage();
+  } catch (error) {
+    if (error instanceof Anthropic.APIError) throw error;
+    throw new AssistantAnswerError(`Claude's answer could not be read: ${errorMessage(error)}`);
+  }
 
   if (message.stop_reason === "refusal") throw new AssistantRefusedError();
   if (message.stop_reason === "max_tokens") {
@@ -159,17 +253,20 @@ export async function answerTraveller(
   const { data } = parsed;
   const text = fitMessage(data.message);
   if (!text) throw new AssistantAnswerError("Claude's answer has no text");
-  return {
-    answer: {
-      message: text,
-      destinations: data.destinations.slice(0, MAX_DESTINATIONS),
-      suggestions: data.suggestions
-        .map((suggestion) => suggestion.trim())
-        .filter(Boolean)
-        .slice(0, MAX_SUGGESTIONS),
+  yield {
+    type: "answer",
+    result: {
+      answer: {
+        message: text,
+        destinations: data.destinations.slice(0, MAX_DESTINATIONS),
+        suggestions: data.suggestions
+          .map((suggestion) => suggestion.trim())
+          .filter(Boolean)
+          .slice(0, MAX_SUGGESTIONS),
+      },
+      model: message.model,
+      usage: { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens },
     },
-    model: message.model,
-    usage: { inputTokens: message.usage.input_tokens, outputTokens: message.usage.output_tokens },
   };
 }
 
