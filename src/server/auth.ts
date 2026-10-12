@@ -1,7 +1,7 @@
 import { createClerkClient } from "@clerk/backend";
 
 import { requireEnv } from "@/server/config";
-import { HttpError, jsonError } from "@/server/http";
+import { HttpError, toHttpError } from "@/server/http";
 
 let client: ReturnType<typeof createClerkClient> | undefined;
 
@@ -32,7 +32,7 @@ type AuthedContext = { request: Request; params: RouteParams; userId: string };
 /**
  * Wraps an API route handler: the Clerk JWT is verified before anything else,
  * an `HttpError` becomes its JSON response, and any other error is logged and
- * answered with a 500 that reveals nothing.
+ * answered with a 500 that reveals nothing (`toHttpError`).
  */
 export function authedRoute(handler: (context: AuthedContext) => Promise<Response>) {
   return async (request: Request, params: RouteParams = {}): Promise<Response> => {
@@ -40,9 +40,7 @@ export function authedRoute(handler: (context: AuthedContext) => Promise<Respons
       const { userId } = await requireUser(request);
       return await handler({ request, params, userId });
     } catch (error) {
-      if (error instanceof HttpError) return error.toResponse();
-      console.error(`[api] ${request.method} ${new URL(request.url).pathname} failed`, error);
-      return jsonError(500, "internal_error", "Something went wrong.");
+      return toHttpError(request, error).toResponse();
     }
   };
 }
