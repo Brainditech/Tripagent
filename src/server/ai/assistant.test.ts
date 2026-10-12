@@ -210,6 +210,28 @@ describe("answerTraveller", () => {
     expect(params.tools?.[0]).toMatchObject({ name: "answer", strict: true, eager_input_streaming: true });
   });
 
+  it("stops waiting for Claude as soon as its signal aborts, with the SDK's abort error", async () => {
+    // The real SDK, on an API that starts the message and then writes nothing: only the abort ends the wait.
+    const start = { type: "message_start", message: message({ content: [], stop_reason: null }) };
+    const fetch = async (_url: unknown, init?: RequestInit) =>
+      new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(`event: message_start\ndata: ${JSON.stringify(start)}\n\n`));
+            init?.signal?.addEventListener("abort", () => controller.error(init.signal?.reason));
+          },
+        }),
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    const client = new Anthropic({ apiKey: "test", fetch, maxRetries: 0 });
+    const upstream = new AbortController();
+    const progress = answerTraveller({ ...input, signal: upstream.signal }, client);
+    expect((await progress.next()).value).toEqual({ type: "start" });
+    const next = progress.next();
+    upstream.abort();
+    await expect(next).rejects.toBeInstanceOf(Anthropic.APIUserAbortError);
+  });
+
   it("cuts the lists to four destinations and three suggestions, and trims the texts", async () => {
     const generous = {
       message: "  Des idées.  ",

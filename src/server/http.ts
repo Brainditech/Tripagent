@@ -48,11 +48,13 @@ export class ClientGoneError extends Error {
  * A response written line by line while `produce` runs: each `send` appends one JSON value and a
  * newline, the body closes when `produce` returns and fails when it throws. The status and the
  * headers leave at once, so what fails after the first line has to be told on a line of its own.
- * Once the client has gone (connection closed, request given up), `send` throws `ClientGoneError`,
- * so that `produce` stops rather than finish an answer nobody reads.
+ * Once the client has gone (connection closed, request given up), `signal` aborts at once, so that
+ * `produce` can cancel what it is waiting for (an upstream request), and `send` throws
+ * `ClientGoneError`, so that `produce` stops rather than finish an answer nobody reads.
  */
-export function jsonLinesResponse<T>(produce: (send: (line: T) => void) => Promise<void>): Response {
+export function jsonLinesResponse<T>(produce: (send: (line: T) => void, signal: AbortSignal) => Promise<void>): Response {
   const encoder = new TextEncoder();
+  const clientGone = new AbortController();
   let open = true;
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -60,7 +62,7 @@ export function jsonLinesResponse<T>(produce: (send: (line: T) => void) => Promi
         if (!open) throw new ClientGoneError();
         controller.enqueue(encoder.encode(`${JSON.stringify(line)}\n`));
       };
-      produce(send).then(
+      produce(send, clientGone.signal).then(
         () => {
           if (!open) return;
           open = false;
@@ -75,6 +77,7 @@ export function jsonLinesResponse<T>(produce: (send: (line: T) => void) => Promi
     },
     cancel() {
       open = false;
+      clientGone.abort(new ClientGoneError());
     },
   });
   return new Response(body, {

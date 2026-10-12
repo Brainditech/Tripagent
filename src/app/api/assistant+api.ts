@@ -14,7 +14,7 @@ import {
 import { authedRoute } from "@/server/auth";
 import { db } from "@/server/db";
 import { users } from "@/server/db/schema";
-import { ClientGoneError, HttpError, jsonLinesResponse, toHttpError } from "@/server/http";
+import { HttpError, jsonLinesResponse, toHttpError } from "@/server/http";
 import { cachedPhoto } from "@/server/unsplash";
 import { ensureUser } from "@/server/users";
 
@@ -44,8 +44,10 @@ export const POST = authedRoute(async ({ request, userId }) => {
 
   // The response waits for Claude to accept the request: a rejected key, a rate limit or an outage
   // still answer with their status (422, 429, 503, 500). Only what fails once the answer has begun
-  // is told on a last `error` line, since the status has left by then.
-  const progress = answerTraveller({ messages, locale: user.locale });
+  // is told on a last `error` line, since the status has left by then. The Claude request starts
+  // before the response exists, so it gets its own signal, aborted once the app stops reading.
+  const upstream = new AbortController();
+  const progress = answerTraveller({ messages, locale: user.locale, signal: upstream.signal });
   try {
     await progress.next();
   } catch (error) {
@@ -55,7 +57,8 @@ export const POST = authedRoute(async ({ request, userId }) => {
   }
 
   let firstTextAt: number | null = null;
-  return jsonLinesResponse<AssistantStreamEvent>(async (send) => {
+  return jsonLinesResponse<AssistantStreamEvent>(async (send, clientGone) => {
+    clientGone.addEventListener("abort", () => upstream.abort(), { once: true });
     try {
       for await (const event of progress) {
         if (event.type === "text") {
@@ -80,8 +83,9 @@ export const POST = authedRoute(async ({ request, userId }) => {
         }
       }
     } catch (error) {
-      // The app stopped reading (new conversation, app closed): leaving the loop aborted the Claude request.
-      if (error instanceof ClientGoneError) return;
+      // The app stopped reading (new conversation, app closed): the Claude request was aborted at
+      // once, even while Claude was writing the cards and suggestions and no line was due.
+      if (clientGone.aborted) return;
       const known = assistantHttpError(error);
       if (known) logFailure("streaming", known, error, messages.length, startedAt);
       const { status, code, message } = known ?? toHttpError(request, error);
