@@ -48,7 +48,7 @@ braces et node-forge : aucune version corrigée n'existe (`npm audit` propose de
 `2a3bf8d` (`fix(deps): override four transitive packages flagged by Dependabot`, branche `fix/dependabot-alerts`).
 
 Preuve, le 12/10/2026 entre 11:30 et 11:38 (heure de Paris) :
-- `npm audit` ne liste plus que braces et node-forge ; `npm ls` ne trouve plus decode-uri-component, et une seule version de query-string (9.5.1), uuid (11.1.1) et postcss-selector-parser (7.1.6).
+- `npm audit` ne liste plus que braces et node-forge ; `npm ls` montre decode-uri-component 0.5.0 sous query-string 9.5.1 (la 0.2.2 vulnérable a disparu de l'arbre verrouillé), et une seule version de query-string (9.5.1), uuid (11.1.1) et postcss-selector-parser (7.1.6).
 - CSS Tailwind (`npx tailwindcss -c tailwind.config.js -i global.css`) identique octet pour octet avant et après (même md5 `6dbfab2e…`).
 - `require("xcode")` se charge et `uuid.v4()` résolu depuis xcode rend un UUID ; `@esbuild-kit/core-utils` résout esbuild 0.25.12 et `transformSync` compile un fichier TypeScript ; `drizzle-kit --version` répond.
 - `tsc --noEmit`, `expo lint` et `npm test` (82 tests) passent ; `expo export --platform android` produit le bundle Hermes (7,4 Mo) avec query-string 9 dedans.
