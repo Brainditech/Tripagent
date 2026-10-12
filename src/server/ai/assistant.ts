@@ -7,6 +7,7 @@ import { languageName } from "@/server/ai/prompts";
 import { toStrictJsonSchema } from "@/server/ai/schema";
 import { config, requireEnv } from "@/server/config";
 import { HttpError } from "@/server/http";
+import { instrumentAnthropic } from "@/server/sentry";
 import type { UnsplashCover } from "@/server/unsplash";
 
 // The travel companion of the Assistant tab: one Claude call per turn, the conversation coming
@@ -19,7 +20,11 @@ const turnSchema = z.object({
   content: z.string().trim().min(1).max(MAX_MESSAGE_LENGTH),
 });
 
-/** Body of POST /api/assistant: the conversation so far, ending with the traveller's new message. */
+/**
+ * Body of POST /api/assistant: the conversation so far, ending with the traveller's new message, and
+ * the id the app gave the conversation when it began, which groups its turns in Sentry (nothing is
+ * stored under it).
+ */
 export const assistantRequestSchema = z.object({
   messages: z
     .array(turnSchema)
@@ -29,6 +34,7 @@ export const assistantRequestSchema = z.object({
       (messages) => messages[0].role === "user" && messages[messages.length - 1].role === "user",
       "The conversation must start and end with a user message",
     ),
+  conversationId: z.string().regex(/^[A-Za-z0-9_-]{1,64}$/).optional(),
 });
 export type AssistantTurn = z.infer<typeof turnSchema>;
 
@@ -176,9 +182,9 @@ export function messageSoFar(json: string): string | null {
   return last >= 0xd800 && last <= 0xdbff ? text.slice(0, -1) : text;
 }
 
-/** The SDK client is built on first use, so that a missing key fails the request and not the import. */
+/** The SDK client is built on first use, so that a missing key fails the request and not the import; Sentry traces its calls. */
 function defaultClient(): Anthropic {
-  return new Anthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") });
+  return instrumentAnthropic(new Anthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") }));
 }
 
 /**

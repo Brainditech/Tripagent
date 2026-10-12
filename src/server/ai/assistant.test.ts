@@ -135,6 +135,12 @@ describe("assistantRequestSchema", () => {
     expect(assistantRequestSchema.safeParse({ messages: history.slice(1) }).success).toBe(false);
   });
 
+  it("accepts the app's conversation id, and refuses one that could not be a tag", () => {
+    expect(assistantRequestSchema.safeParse({ messages: history, conversationId: "mh3k2x-a1b2c3d4" }).success).toBe(true);
+    expect(assistantRequestSchema.safeParse({ messages: history, conversationId: "bad id!" }).success).toBe(false);
+    expect(assistantRequestSchema.safeParse({ messages: history, conversationId: "a".repeat(65) }).success).toBe(false);
+  });
+
   it("refuses an empty message, a message too long, and a history too long", () => {
     expect(assistantRequestSchema.safeParse({ messages: [{ role: "user", content: "   " }] }).success).toBe(false);
     const long = { role: "user", content: "a".repeat(MAX_MESSAGE_LENGTH + 1) };
