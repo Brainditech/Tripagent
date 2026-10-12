@@ -94,6 +94,23 @@ export class AssistantAnswerError extends Error {
   }
 }
 
+/**
+ * The reply as a turn the next request will accept (`turnSchema`): trimmed, null when nothing
+ * is left, and no longer than `MAX_MESSAGE_LENGTH`. The prompt asks for a few sentences, but a
+ * long answer would otherwise poison the conversation: the app sends it back as an assistant
+ * turn, and every following request would be refused. A long reply is cut after the last
+ * sentence that fits, or mid-way with an ellipsis when no sentence end falls in the second half.
+ */
+export function fitMessage(text: string): string | null {
+  const trimmed = text.trim();
+  if (!trimmed) return null;
+  if (trimmed.length <= MAX_MESSAGE_LENGTH) return trimmed;
+  const room = trimmed.slice(0, MAX_MESSAGE_LENGTH - 1);
+  const lastEnd = Math.max(...[". ", "! ", "? ", "\n"].map((end) => room.lastIndexOf(end)));
+  if (lastEnd > MAX_MESSAGE_LENGTH / 2) return room.slice(0, lastEnd + 1).trimEnd();
+  return `${room.trimEnd()}…`;
+}
+
 /** The SDK client is built on first use, so that a missing key fails the request and not the import. */
 function defaultClient(): Anthropic {
   return new Anthropic({ apiKey: requireEnv("ANTHROPIC_API_KEY") });
@@ -140,9 +157,11 @@ export async function answerTraveller(
   }
 
   const { data } = parsed;
+  const text = fitMessage(data.message);
+  if (!text) throw new AssistantAnswerError("Claude's answer has no text");
   return {
     answer: {
-      message: data.message.trim(),
+      message: text,
       destinations: data.destinations.slice(0, MAX_DESTINATIONS),
       suggestions: data.suggestions
         .map((suggestion) => suggestion.trim())

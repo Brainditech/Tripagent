@@ -9,6 +9,7 @@ import {
   assistantHttpError,
   assistantRequestSchema,
   type AssistantTurn,
+  fitMessage,
 } from "@/server/ai/assistant";
 
 const history: AssistantTurn[] = [
@@ -165,5 +166,41 @@ describe("assistantHttpError", () => {
     );
     expect(assistantHttpError(unauthorized)).toBeNull();
     expect(assistantHttpError(new Error("boom"))).toBeNull();
+  });
+});
+
+describe("fitMessage", () => {
+  it("keeps a short message, trimmed", () => {
+    expect(fitMessage("  Bonne idée.  ")).toBe("Bonne idée.");
+  });
+
+  it("answers null when nothing is left, so the route retries instead of storing an empty turn", () => {
+    expect(fitMessage("   ")).toBeNull();
+  });
+
+  it("cuts a long message after the last sentence that fits", () => {
+    const sentence = "Une phrase de quarante caractères environ. ";
+    const long = sentence.repeat(80);
+    const fitted = fitMessage(long)!;
+    expect(fitted.length).toBeLessThanOrEqual(MAX_MESSAGE_LENGTH);
+    expect(fitted.endsWith(".")).toBe(true);
+    expect(fitted.startsWith(sentence.trim())).toBe(true);
+  });
+
+  it("cuts mid-way with an ellipsis when no sentence ends in the second half", () => {
+    const fitted = fitMessage("x".repeat(MAX_MESSAGE_LENGTH * 2))!;
+    expect(fitted).toHaveLength(MAX_MESSAGE_LENGTH);
+    expect(fitted.endsWith("…")).toBe(true);
+  });
+
+  it("is applied to the answer, so an assistant turn always passes the request schema", async () => {
+    const long = message({ content: [toolUse({ ...validAnswer, message: "Phrase. ".repeat(600) })] });
+    const { answer } = await answerTraveller({ messages: history, locale: "fr" }, fakeClient(long).client);
+    expect(answer.message.length).toBeLessThanOrEqual(MAX_MESSAGE_LENGTH);
+    expect(assistantRequestSchema.safeParse({ messages: [...history, { role: "assistant", content: answer.message }, history[0]] }).success).toBe(true);
+    const blank = message({ content: [toolUse({ ...validAnswer, message: "   " })] });
+    await expect(answerTraveller({ messages: history, locale: "fr" }, fakeClient(blank).client)).rejects.toBeInstanceOf(
+      AssistantAnswerError,
+    );
   });
 });
